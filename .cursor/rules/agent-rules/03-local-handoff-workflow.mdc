@@ -1,0 +1,26 @@
+---
+description: Local checkout is the source of truth and requires explicit handoff
+alwaysApply: true
+---
+
+# Local Handoff Workflow
+
+- Treat `E:\dev\hub` as the source of truth between turns.
+- Read the local version of a touched file before changing it.
+- Scratch/worktree edits are temporary working space only.
+- Before finishing, sync every touched file back to `E:\dev\hub`.
+- Do not mark work complete until the touched files are back in local.
+
+# Confirm Before Editing
+
+- Before substantial edits, briefly state:
+  - the decision
+  - the files to change
+  - the expected impact
+- Do not start major code changes before stating that plan.
+
+# Review Handoff
+
+- Stop after local files are updated so the user can review and continue editing.
+- If the user edits local files afterward, those local edits become the new source of truth next turn.
+- If local and scratch differ, prefer local unless the user explicitly says otherwise.

@@ -6,7 +6,7 @@
 param(
     [Parameter(Mandatory = $true, Position = 0)]
     [ValidateSet(
-        "local-up", "local-down", "local-db-init", "local-sync-db", "local-seed-db", "local-logs", "local-health",
+        "local-up", "local-up-aws", "local-down", "local-db-init", "local-sync-db", "local-seed-db", "local-logs", "local-health",
         "docker-up", "docker-down", "docker-logs",
         "install-ui", "dev-ui", "dev-ui-aws", "dev-admin", "dev-partners", "build-ui"
     )]
@@ -180,7 +180,13 @@ function Invoke-InstallUi {
 }
 
 function Start-UiPortals {
-    Invoke-DevUiAws
+    if (-not (Test-Path (Join-Path $RepoRoot "apps\web-cip\node_modules"))) {
+        Invoke-InstallUi
+    }
+    $adminPath = Join-Path $RepoRoot "apps\web-cip"
+    $partnersPath = Join-Path $RepoRoot "apps\web-partners"
+    Start-Process cmd -ArgumentList "/c", "cd /d `"$adminPath`" && npm run dev" -WindowStyle Hidden
+    Start-Process cmd -ArgumentList "/c", "cd /d `"$partnersPath`" && npm run dev" -WindowStyle Hidden
 }
 
 function Invoke-LocalUp {
@@ -189,6 +195,11 @@ function Invoke-LocalUp {
     Start-LocalApi
     Start-UiPortals
     Write-Host "Done. API: http://localhost:8080 | Admin: http://localhost:5173 | Vendor: http://localhost:5174" -ForegroundColor Green
+}
+
+function Invoke-LocalUpAws {
+    Write-Host "Starting local UIs with AWS API settings..." -ForegroundColor Cyan
+    Invoke-DevUiAws
 }
 
 function Invoke-LocalDown {
@@ -320,6 +331,7 @@ function Invoke-DevUiAws {
 
 switch ($Target) {
     "local-up"       { Invoke-LocalUp }
+    "local-up-aws"   { Invoke-LocalUpAws }
     "local-down"     { Invoke-LocalDown }
     "local-db-init"  { Invoke-LocalDbInit }
     "local-sync-db"  { Invoke-LocalSyncDb }
