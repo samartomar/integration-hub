@@ -59,7 +59,7 @@ class PipelineStack(Stack):
         build_project = codebuild.PipelineProject(
             self,
             "BuildProject",
-            project_name="poc-py-build",
+            project_name="integration-hub-dev-build",
             build_spec=codebuild.BuildSpec.from_source_filename("tooling/pipelines/buildspec-build.yml"),
             environment=codebuild.BuildEnvironment(
                 build_image=codebuild.LinuxBuildImage.STANDARD_7_0,
@@ -84,7 +84,7 @@ class PipelineStack(Stack):
             compute_type=codebuild.ComputeType.MEDIUM,
         )
         migrate_kwargs: dict = {
-            "project_name": "poc-py-migrate",
+            "project_name": "integration-hub-dev-migrate",
             "build_spec": codebuild.BuildSpec.from_source_filename("tooling/pipelines/buildspec-migrate.yml"),
             "environment": migrate_env,
             "cache": codebuild.Cache.bucket(cache_bucket, prefix="migrate"),
@@ -117,7 +117,7 @@ class PipelineStack(Stack):
         pipeline = codepipeline.Pipeline(
             self,
             "Pipeline",
-            pipeline_name="poc-py-pipeline",
+            pipeline_name="integration-hub-dev-pipeline",
             restart_execution_on_update=True,
         )
 
@@ -129,7 +129,7 @@ class PipelineStack(Stack):
         CfnOutput(
             self,
             "PipelineUrl",
-            value=f"https://{self.region}.console.aws.amazon.com/codesuite/codepipeline/pipelines/poc-py-pipeline/view",
+            value=f"https://{self.region}.console.aws.amazon.com/codesuite/codepipeline/pipelines/integration-hub-dev-pipeline/view",
             description="CodePipeline URL",
             export_name="PipelineUrl",
         )

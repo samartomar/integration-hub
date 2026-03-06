@@ -771,7 +771,6 @@ def test_idempotency_second_call_when_first_received_returns_409_in_flight(
 
     event = _base_event(
         _execute_body(parameters={"transactionId": "tx-1"}, idempotency_key="idem-same-123"),
-,
     )
     resp = handler(event, None)
 
@@ -2877,7 +2876,6 @@ def test_execute_success_populates_debug_payload_fields(
 
     event = _base_event(
         _execute_body(parameters={"transactionId": "tx-1"}),
-,
     )
     resp = handler(event, None)
 
@@ -2956,7 +2954,6 @@ def test_execute_mapping_failure_populates_debug_payload_fields(
 
     event = _base_event(
         _execute_body(parameters={"transactionId": "tx-1"}),
-,
     )
     resp = handler(event, None)
 

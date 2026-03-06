@@ -13,8 +13,8 @@ Both pipelines use the same CodeStar connection. Pipelines run in the dev accoun
 
 ## Pipeline URLs
 
-- **Dev**: [poc-py-pipeline](https://us-west-2.console.aws.amazon.com/codesuite/codepipeline/pipelines/poc-py-pipeline/view)
-- **Prod**: [poc-py-pipeline-prod](https://us-west-2.console.aws.amazon.com/codesuite/codepipeline/pipelines/poc-py-pipeline-prod/view)
+- **Dev**: [integration-hub-dev-pipeline](https://us-east-1.console.aws.amazon.com/codesuite/codepipeline/pipelines/integration-hub-dev-pipeline/view)
+- **Prod**: [integration-hub-prod-pipeline](https://us-east-1.console.aws.amazon.com/codesuite/codepipeline/pipelines/integration-hub-prod-pipeline/view)
 
 To get the URL programmatically:
 

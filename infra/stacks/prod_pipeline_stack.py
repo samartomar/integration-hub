@@ -59,7 +59,7 @@ class ProdPipelineStack(Stack):
         build_project = codebuild.PipelineProject(
             self,
             "BuildProject",
-            project_name="poc-py-build-prod",
+            project_name="integration-hub-prod-build",
             build_spec=codebuild.BuildSpec.from_source_filename("tooling/pipelines/buildspec-build.yml"),
             environment=codebuild.BuildEnvironment(
                 build_image=codebuild.LinuxBuildImage.STANDARD_7_0,
@@ -92,7 +92,7 @@ class ProdPipelineStack(Stack):
             },
         )
         migrate_kwargs: dict = {
-            "project_name": "poc-py-migrate-prod",
+            "project_name": "integration-hub-prod-migrate",
             "build_spec": codebuild.BuildSpec.from_source_filename("tooling/pipelines/buildspec-migrate-prod.yml"),
             "environment": migrate_env,
             "cache": codebuild.Cache.bucket(cache_bucket, prefix="migrate-prod"),
@@ -133,7 +133,7 @@ class ProdPipelineStack(Stack):
         pipeline = codepipeline.Pipeline(
             self,
             "Pipeline",
-            pipeline_name="poc-py-pipeline-prod",
+            pipeline_name="integration-hub-prod-pipeline",
             restart_execution_on_update=True,
         )
 
@@ -144,7 +144,7 @@ class ProdPipelineStack(Stack):
         CfnOutput(
             self,
             "PipelineUrl",
-            value=f"https://{self.region}.console.aws.amazon.com/codesuite/codepipeline/pipelines/poc-py-pipeline-prod/view",
+            value=f"https://{self.region}.console.aws.amazon.com/codesuite/codepipeline/pipelines/integration-hub-prod-pipeline/view",
             description="Prod CodePipeline URL",
             export_name="ProdPipelineUrl",
         )

@@ -120,7 +120,7 @@ describe("MissionControlPage smoke", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 2_200));
     await waitFor(() => {
-      expect(endpointsApi.getMissionControlActivity.mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(vi.mocked(endpointsApi.getMissionControlActivity).mock.calls.length).toBeGreaterThanOrEqual(2);
     });
   }, 10_000);
 
