@@ -43,12 +43,12 @@ from canonical_response import canonical_error
 from cors import add_cors_to_response
 from feature_flags import is_feature_enabled_for_vendor
 from observability import get_context, log_json, with_observability
+from policy_engine import PolicyContext, evaluate_policy
 from psycopg2.extras import RealDictCursor
 
 _SRC_ROOT = Path(__file__).resolve().parent.parent
 if str(_SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(_SRC_ROOT))
-from shared.policy_engine import evaluate_policy
 
 # Max request body size (bytes)
 _MAX_BODY_BYTES = int(os.environ.get("AI_GATEWAY_MAX_BODY_BYTES", "131072"))  # 128 KB
@@ -551,83 +551,10 @@ def _handle_data_request(body: dict[str, Any], ctx: dict[str, Any]) -> dict[str,
     correlation_id = str(uuid.uuid4())
     operation_code = (body.get("operationCode") or "").strip()
     target_vendor = (body.get("targetVendorCode") or "").strip()
-    source_vendor_body = (body.get("sourceVendorCode") or body.get("sourceVendor") or "").strip()
     source_vendor_auth = (ctx.get("source_vendor_from_auth") or "").strip()
     source_vendor = source_vendor_auth
     payload = body.get("payload") or {}
     idempotency_key = (body.get("idempotencyKey") or "").strip() or None
-
-    source_vendor_policy = evaluate_policy({
-        "policy": "AI_GATEWAY_SOURCE_VENDOR_REQUIRED",
-        "check": lambda: source_vendor_auth != "",
-        "deny_reason": "JWT vendor identity is missing required bcpAuth claim",
-        "details": {
-            "operationCode": operation_code,
-            "targetVendorCode": target_vendor,
-        },
-    })
-    if not source_vendor_policy.get("allowed", False):
-        err = {
-            "code": "AUTH_ERROR",
-            "message": str(source_vendor_policy.get("reason") or "JWT vendor identity is missing required bcpAuth claim"),
-            "category": "AUTH",
-            "retryable": False,
-        }
-        payload_out = _build_response_envelope(
-            transaction_id, correlation_id, "DATA", operation_code, target_vendor,
-            None, False, None, None, None, None, None, None, err,
-        )
-        return add_cors_to_response({
-            "statusCode": 401,
-            "headers": {"Content-Type": "application/json"},
-            "body": json.dumps(payload_out, default=str),
-        })
-
-    spoof_policy = evaluate_policy({
-        "policy": "AI_GATEWAY_VENDOR_SPOOF",
-        "check": lambda: (not source_vendor_body) or (source_vendor_auth == source_vendor_body),
-        "deny_reason": "sourceVendor/sourceVendorCode does not match token bcpAuth",
-        "details": {
-            "sourceVendorBody": source_vendor_body or None,
-            "sourceVendorAuth": source_vendor_auth or None,
-        },
-    })
-    if not spoof_policy.get("allowed", False):
-        err = {
-            "code": "VENDOR_SPOOF_BLOCKED",
-            "message": str(spoof_policy.get("reason") or "sourceVendor/sourceVendorCode does not match token bcpAuth"),
-            "category": "AUTH",
-            "retryable": False,
-        }
-        payload_out = _build_response_envelope(
-            transaction_id, correlation_id, "DATA", operation_code, target_vendor,
-            None, False, None, None, None, None, None, None, err,
-        )
-        return add_cors_to_response({
-            "statusCode": 403,
-            "headers": {"Content-Type": "application/json"},
-            "body": json.dumps(payload_out, default=str),
-        })
-
-    # Runtime execute requires sourceVendor for allowlist checks.
-    use_runtime = bool((os.environ.get("RUNTIME_API_URL") or "").strip())
-    runtime_source_policy = evaluate_policy({
-        "policy": "AI_GATEWAY_RUNTIME_SOURCE_VENDOR",
-        "check": lambda: (not use_runtime) or bool(source_vendor),
-        "deny_reason": "JWT vendor claim (bcpAuth) is required for Runtime API execute",
-    })
-    if not runtime_source_policy.get("allowed", False):
-        err = {"code": "AUTH_ERROR", "message": "JWT vendor claim (bcpAuth) is required for Runtime API execute", "category": "AUTH", "retryable": False}
-        payload_out = _build_response_envelope(
-            transaction_id, correlation_id, "DATA", operation_code, target_vendor,
-            None, False, None, None, None, None, None, None, err,
-        )
-        _log_ai_execute_completed(401, request_type="DATA", operation_code=operation_code, target_vendor_code=target_vendor, transaction_id=transaction_id, correlation_id=correlation_id, error_code="AUTH_ERROR", error_category="AUTH")
-        return add_cors_to_response({
-            "statusCode": 401,
-            "headers": {"Content-Type": "application/json"},
-            "body": json.dumps(payload_out, default=str),
-        })
 
     log_json(
         "INFO", "ai_execute_data_start",
@@ -913,10 +840,66 @@ def _handler_impl(event: dict[str, Any], context: object) -> dict[str, Any]:
     ctx = get_context(event, context)
     ctx["auth_method"] = "bcpAuth"
     ctx["source_vendor_from_auth"] = str((auth_claims or {}).get("bcpAuth") or "").strip().upper()
+    ctx["auth_groups"] = list((auth_claims or {}).get("roles") or [])
+    ctx["auth_scopes"] = list((auth_claims or {}).get("scopes") or [])
     headers = {k.lower(): (v if isinstance(v, str) else str(v)) for k, v in (event.get("headers") or {}).items()}
     ctx["auth_header"] = (headers.get("authorization") or "").strip() or None
 
     request_type = (body.get("requestType") or "").upper()
+    policy_action = "AI_EXECUTE_PROMPT" if request_type == "PROMPT" else "AI_EXECUTE_DATA"
+    policy_decision = evaluate_policy(
+        PolicyContext(
+            surface="RUNTIME",
+            action=policy_action,
+            vendor_code=ctx["source_vendor_from_auth"] or None,
+            target_vendor_code=(body.get("targetVendorCode") or None),
+            operation_code=(body.get("operationCode") or None),
+            requested_source_vendor_code=(body.get("sourceVendorCode") or body.get("sourceVendor") or None),
+            is_admin=False,
+            groups=[str(v) for v in (ctx.get("auth_groups") or []) if str(v).strip()],
+            query={"enforce_allowlist": False},
+        )
+    )
+    if not policy_decision.allow:
+        err = {
+            "code": policy_decision.decision_code,
+            "message": policy_decision.message,
+            "category": "AUTH" if policy_decision.http_status in (401, 403) else "POLICY",
+            "retryable": False,
+            "details": {"policy": policy_decision.metadata},
+        }
+        payload_out = _build_response_envelope(
+            str(uuid.uuid4()),
+            str(uuid.uuid4()),
+            request_type or "DATA",
+            (body.get("operationCode") or None),
+            (body.get("targetVendorCode") or None),
+            None,
+            False,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            err,
+        )
+        _log_ai_execute_completed(
+            policy_decision.http_status,
+            request_type=request_type or "DATA",
+            operation_code=body.get("operationCode"),
+            target_vendor_code=body.get("targetVendorCode"),
+            transaction_id=payload_out["transactionId"],
+            correlation_id=payload_out["correlationId"],
+            error_code=err["code"],
+            error_category=err["category"],
+        )
+        return add_cors_to_response({
+            "statusCode": policy_decision.http_status,
+            "headers": {"Content-Type": "application/json"},
+            "body": json.dumps(payload_out, default=str),
+        })
+
     if request_type == "PROMPT":
         return _handle_prompt_request(body, ctx)
     return _handle_data_request(body, ctx)

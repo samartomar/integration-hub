@@ -180,13 +180,7 @@ function Invoke-InstallUi {
 }
 
 function Start-UiPortals {
-    if (-not (Test-Path (Join-Path $RepoRoot "apps\web-cip\node_modules"))) {
-        Invoke-InstallUi
-    }
-    $adminPath = Join-Path $RepoRoot "apps\web-cip"
-    $partnersPath = Join-Path $RepoRoot "apps\web-partners"
-    Start-Process cmd -ArgumentList "/c", "cd /d `"$adminPath`" && npm run dev" -WindowStyle Hidden
-    Start-Process cmd -ArgumentList "/c", "cd /d `"$partnersPath`" && npm run dev" -WindowStyle Hidden
+    Invoke-DevUiAws
 }
 
 function Invoke-LocalUp {

@@ -33,18 +33,18 @@ def _register_event(
 
 
 @patch("onboarding_lambda._get_connection")
-def test_jwt_lh001_with_body_lh002_ignores_body_vendor(
+def test_jwt_bcpauth_with_matching_body_vendor_registers_vendor(
     mock_conn_ctx: MagicMock,
 ) -> None:
-    """JWT lhcode is source of truth; conflicting body vendorCode is ignored."""
+    """Authenticated bcpAuth vendor can register when body vendorCode matches."""
     mock_conn = MagicMock()
     mock_conn_ctx.return_value.__enter__.return_value = mock_conn
 
-    event = _register_event(vendor_code="LH002")
+    event = _register_event(vendor_code="LH001")
     event["requestContext"] = {
         "authorizer": {
-            "lhcode": "LH001",
-            "jwt": {"claims": {"lhcode": "LH001"}},
+            "bcpAuth": "LH001",
+            "jwt": {"claims": {"bcpAuth": "LH001", "aud": "api://default"}},
             "principalId": "LH001",
         }
     }
@@ -53,3 +53,26 @@ def test_jwt_lh001_with_body_lh002_ignores_body_vendor(
     assert resp["statusCode"] == 200
     body = json.loads(resp["body"])
     assert body.get("vendorCode") == "LH001"
+
+
+@patch("onboarding_lambda._get_connection")
+def test_jwt_bcpauth_with_conflicting_body_vendor_blocks_spoof(
+    mock_conn_ctx: MagicMock,
+) -> None:
+    """Conflicting body vendorCode is blocked by policy instead of ignored."""
+    mock_conn = MagicMock()
+    mock_conn_ctx.return_value.__enter__.return_value = mock_conn
+
+    event = _register_event(vendor_code="LH002")
+    event["requestContext"] = {
+        "authorizer": {
+            "bcpAuth": "LH001",
+            "jwt": {"claims": {"bcpAuth": "LH001", "aud": "api://default"}},
+            "principalId": "LH001",
+        }
+    }
+    resp = handler(event, None)
+
+    assert resp["statusCode"] == 403
+    body = json.loads(resp["body"])
+    assert body.get("error", {}).get("code") == "VENDOR_SPOOF_BLOCKED"

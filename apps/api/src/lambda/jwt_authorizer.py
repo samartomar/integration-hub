@@ -4,52 +4,45 @@ REST API Token Authorizer - validates Okta JWT for Vendor REST API.
 Used by API Gateway REST API (token authorizer). Receives authorizationToken (Bearer <jwt>),
 validates via JWKS, returns IAM policy allow/deny. Context is passed to integration Lambda.
 
-Env: IDP_JWKS_URL, IDP_ISSUER, IDP_AUDIENCE, AUTH_BYPASS (optional),
-     IDP_VENDOR_CLAIM (optional) - single claim name for vendor identity.
-       Default: lhcode.
+Env: IDP_ISSUER, IDP_JWKS_URL, VENDOR_API_AUDIENCE (or IDP_AUDIENCE fallback).
 """
 
 from __future__ import annotations
 
 import os
 
+from bcp_auth import AuthError, validate_jwt
+
 
 def handler(event: dict, context: object) -> dict:
     """Token authorizer: validate JWT, return policy. Event has authorizationToken, methodArn."""
-    bypass = (os.environ.get("AUTH_BYPASS") or "").strip().lower() in ("true", "1", "yes")
-    if bypass:
-        return _allow_policy(event.get("methodArn", ""), principal="bypass", claims={"sub": "local", "lhcode": "LOCAL"})
-
     token = _extract_token(event.get("authorizationToken") or "")
     if not token:
         return _deny_policy(event.get("methodArn", ""), "Missing Authorization header")
 
-    jwt_config = _load_config()
-    if not jwt_config:
-        return _deny_policy(event.get("methodArn", ""), "JWT auth not configured")
-
     try:
-        from jwt_auth import validate_jwt_for_authorizer
-        claims = validate_jwt_for_authorizer(token, jwt_config)
-        vendor_claim = _parse_vendor_claim()
-        vendor_value = str(claims.get(vendor_claim) or "").strip().upper()
-        if not vendor_value:
-            return _deny_policy(event.get("methodArn", ""), f"Missing required vendor claim '{vendor_claim}'")
-
-        principal = vendor_value
-        # Keep both lhcode and vendor_code set for downstream lambdas during migration.
-        ctx_claims = dict(claims)
-        ctx_claims["lhcode"] = vendor_value
-        ctx_claims["vendor_code"] = vendor_value
-        return _allow_policy(event.get("methodArn", ""), principal=str(principal), claims=ctx_claims)
+        expected_audience = (
+            os.environ.get("VENDOR_API_AUDIENCE")
+            or os.environ.get("IDP_AUDIENCE")
+            or "api://default"
+        ).strip()
+        validated = validate_jwt(
+            token,
+            expected_audience=expected_audience,
+            allow_vendor=True,
+        )
+        principal = str(validated.bcpAuth or validated.subject or "vendor").strip()
+        ctx_claims = {
+            "sub": validated.subject,
+            "bcpAuth": validated.bcpAuth or "",
+            "groups": ",".join(validated.roles),
+            "scp": " ".join(validated.scopes),
+        }
+        return _allow_policy(event.get("methodArn", ""), principal=principal, claims=ctx_claims)
+    except AuthError as e:
+        return _deny_policy(event.get("methodArn", ""), e.message)
     except Exception as e:
         return _deny_policy(event.get("methodArn", ""), str(e))
-
-
-def _parse_vendor_claim() -> str:
-    """Resolve single vendor claim key used for identity. Default: lhcode."""
-    raw = (os.environ.get("IDP_VENDOR_CLAIM") or "lhcode").strip()
-    return raw or "lhcode"
 
 
 def _extract_token(val: str) -> str:
@@ -58,28 +51,6 @@ def _extract_token(val: str) -> str:
     if val.lower().startswith("bearer "):
         return val[7:].strip()
     return val
-
-
-def _load_config() -> object | None:
-    """Load JwtAuthConfig from env (Okta/IDP)."""
-    from jwt_auth import JwtAuthConfig
-    jwks_url = (os.environ.get("IDP_JWKS_URL") or "").strip()
-    if not jwks_url:
-        return None
-    issuer = (os.environ.get("IDP_ISSUER") or "").strip()
-    aud_raw = (os.environ.get("IDP_AUDIENCE") or "").strip()
-    audiences = [a.strip() for a in aud_raw.split(",") if a.strip()] if aud_raw else []
-    if not audiences:
-        return None
-    return JwtAuthConfig(
-        issuer=issuer,
-        jwks_uri=jwks_url,
-        audiences=audiences,
-        vendor_claim=_parse_vendor_claim(),
-        allowed_alg="RS256",
-        clock_skew_seconds=60,
-        allowed_algs=["RS256"],
-    )
 
 
 def _allow_policy(method_arn: str, principal: str, claims: dict | None = None) -> dict:

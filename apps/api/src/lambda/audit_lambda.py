@@ -13,7 +13,8 @@ from typing import Any, Generator
 
 import psycopg2
 
-from admin_guard import require_admin_secret
+from admin_guard import validate_admin_claims
+from bcp_auth import AuthError
 from canonical_response import canonical_error, canonical_ok, policy_denied_response
 from cors import add_cors_to_response
 from observability import get_context, log_json, with_observability
@@ -93,8 +94,8 @@ def _execute_one(
     return rows[0] if rows else None
 
 
-def _get_by_id(conn: Any, transaction_id: str, vendor_code: str) -> dict[str, Any] | None:
-    """Get single transaction by id, scoped to vendorCode. Includes debug bodies and error metadata."""
+def _get_by_id(conn: Any, transaction_id: str, vendor_code: str | None) -> dict[str, Any] | None:
+    """Get single transaction by id, optionally filtered by source vendor."""
     q = sql.SQL(
         """
         SELECT id, transaction_id, correlation_id, source_vendor, target_vendor,
@@ -105,10 +106,11 @@ def _get_by_id(conn: Any, transaction_id: str, vendor_code: str) -> dict[str, An
                target_response_body, canonical_response_body,
                error_code, http_status, retryable, failure_stage
         FROM {}.{}
-        WHERE transaction_id = %s AND source_vendor = %s
+        WHERE transaction_id = %s
+          AND (%s IS NULL OR source_vendor = %s)
         """
     ).format(sql.Identifier(SCHEMA), sql.Identifier(TABLE))
-    return _execute_one(conn, q, (transaction_id, vendor_code))
+    return _execute_one(conn, q, (transaction_id, vendor_code, vendor_code))
 
 
 def _to_transaction_detail_response(row: dict[str, Any]) -> dict[str, Any]:
@@ -536,13 +538,11 @@ def _query_audit_events(
 
 def _handler_impl(event: dict[str, Any], context: object) -> dict[str, Any]:
     """
-    Handle audit requests.
+    Handle audit requests. All audit routes require admin JWT.
 
-    GET /v1/audit/transactions?vendorCode=X&from=&to=&status=&operation=&limit=&cursor=
-    GET /v1/audit/transactions/{transactionId}?vendorCode=X
-    GET /v1/audit/events?transactionId=X&vendorCode=Y (vendorCode optional)
-
-    vendorCode required for transactions (POC; later derive from auth).
+    GET /v1/audit/transactions?vendorCode=<filter>&from=&to=&status=&operation=&limit=&cursor=
+    GET /v1/audit/transactions/{transactionId}?vendorCode=<optional filter>
+    GET /v1/audit/events?transactionId=X&limit=Y
     """
     _normalize_event(event)
     if event.get("httpMethod") != "GET":
@@ -552,24 +552,24 @@ def _handler_impl(event: dict[str, Any], context: object) -> dict[str, Any]:
     path_params = event.get("pathParameters") or {}
     segments = [s for s in path.strip("/").split("/") if s]
     params = event.get("queryStringParameters") or {}
+    try:
+        admin_claims = validate_admin_claims(event)
+    except AuthError as e:
+        return add_cors_to_response(canonical_error("AUTH_ERROR", e.message, status_code=e.status_code))
 
     # GET /v1/audit/events?transactionId=<id>&limit=<n>
     # Requires JWT (admin role). limit default 200, max 500. Returns { items, nextCursor: null }.
     if segments == ["v1", "audit", "events"]:
-        auth_err = require_admin_secret(event)
-        is_admin = auth_err is None
-        if auth_err is not None:
-            return add_cors_to_response(auth_err)
         decision = evaluate_policy(
             PolicyContext(
                 surface="ADMIN",
                 action="AUDIT_READ",
-                vendor_code="ADMIN" if is_admin else None,
+                vendor_code="ADMIN",
                 target_vendor_code=None,
                 operation_code=None,
                 requested_source_vendor_code=None,
-                is_admin=is_admin,
-                groups=[],
+                is_admin=True,
+                groups=admin_claims.roles,
                 query={},
             )
         )
@@ -608,14 +608,14 @@ def _handler_impl(event: dict[str, Any], context: object) -> dict[str, Any]:
             return _error(400, "VALIDATION_ERROR", str(e))
         decision = evaluate_policy(
             PolicyContext(
-                surface="VENDOR",
+                surface="ADMIN",
                 action="AUDIT_EXPAND_SENSITIVE" if filters["expand_sensitive"] else "AUDIT_READ",
-                vendor_code=filters["vendor_code"] or "AUDIT_VIEWER",
+                vendor_code="ADMIN",
                 target_vendor_code=None,
                 operation_code=None,
                 requested_source_vendor_code=None,
-                is_admin=False,
-                groups=[],
+                is_admin=True,
+                groups=admin_claims.roles,
                 query={"expandSensitive": filters["expand_sensitive"]},
             )
         )
@@ -659,14 +659,14 @@ def _handler_impl(event: dict[str, Any], context: object) -> dict[str, Any]:
 
     decision = evaluate_policy(
         PolicyContext(
-            surface="VENDOR",
+            surface="ADMIN",
             action="AUDIT_EXPAND_SENSITIVE" if filters["expand_sensitive"] else "AUDIT_LIST",
-            vendor_code=filters["vendor_code"] or "AUDIT_VIEWER",
+            vendor_code="ADMIN",
             target_vendor_code=None,
             operation_code=None,
             requested_source_vendor_code=None,
-            is_admin=False,
-            groups=[],
+            is_admin=True,
+            groups=admin_claims.roles,
             query={"expandSensitive": filters["expand_sensitive"]},
         )
     )

@@ -194,7 +194,7 @@ export interface VendorChangeRequestItem {
   updatedAt?: string;
 }
 
-/** GET /v1/vendor/change-requests?status=PENDING&limit= */
+/** GET /v1/vendor/my-change-requests?status=PENDING&limit= */
 export async function getVendorChangeRequests(params?: {
   status?: string;
   limit?: number;
@@ -204,7 +204,7 @@ export async function getVendorChangeRequests(params?: {
   if (params?.limit != null) q.set("limit", String(params.limit));
   const query = q.toString();
   const { data } = await vendorApi.get<{ items: VendorChangeRequestItem[] }>(
-    `/v1/vendor/change-requests${query ? `?${query}` : ""}`
+    `/v1/vendor/my-change-requests${query ? `?${query}` : ""}`
   );
   return { items: data?.items ?? [] };
 }

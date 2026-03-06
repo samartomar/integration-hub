@@ -10,8 +10,11 @@ from contextlib import contextmanager
 from typing import Any
 
 import psycopg2
+from bcp_auth import AuthError, validate_authorizer_claims, validate_jwt
+from canonical_response import canonical_error, canonical_ok, policy_denied_response
 from cors import add_cors_to_response
 from observability import log_json, with_observability
+from policy_engine import PolicyContext, evaluate_policy
 from psycopg2.extras import RealDictCursor
 
 def _resolve_db_url() -> str:
@@ -51,14 +54,12 @@ def _get_connection() -> Generator[Any, None, None]:
         conn.close()
 
 
-def _response(status: int, body: dict[str, Any]) -> dict[str, Any]:
-    """Build Lambda proxy response with CORS."""
-    resp = {
-        "statusCode": status,
-        "headers": {"Content-Type": "application/json"},
-        "body": json.dumps(body, default=str),
-    }
-    return add_cors_to_response(resp)
+def _success(payload: dict[str, Any], status: int = 200) -> dict[str, Any]:
+    return add_cors_to_response(canonical_ok(payload, status))
+
+
+def _error(status: int, code: str, message: str, details: dict[str, Any] | None = None) -> dict[str, Any]:
+    return add_cors_to_response(canonical_error(code, message, status, details))
 
 
 def _parse_body(raw: str | dict | None) -> dict[str, Any]:
@@ -108,6 +109,35 @@ def _get_headers(event: dict[str, Any]) -> dict[str, str]:
     return {k.lower(): (v if isinstance(v, str) else str(v)) for k, v in h.items()}
 
 
+def _authorization_header(event: dict[str, Any]) -> str:
+    return _get_headers(event).get("authorization", "")
+
+
+def _resolve_vendor_claims(event: dict[str, Any]) -> tuple[str, list[str]]:
+    expected_aud = (
+        os.environ.get("VENDOR_API_AUDIENCE")
+        or os.environ.get("IDP_AUDIENCE")
+        or "api://default"
+    ).strip()
+    auth = (event.get("requestContext") or {}).get("authorizer") or {}
+    jwt_claims = auth.get("jwt", {}).get("claims", {}) if isinstance(auth.get("jwt"), dict) else {}
+    if isinstance(jwt_claims, dict) and jwt_claims:
+        validated = validate_authorizer_claims(
+            jwt_claims,
+            expected_audience=expected_aud,
+            allow_vendor=True,
+        )
+    else:
+        validated = validate_jwt(
+            _authorization_header(event),
+            expected_audience=expected_aud,
+            allow_vendor=True,
+        )
+    if not validated.bcpAuth:
+        raise AuthError("UNAUTHORIZED", "Missing required claim 'bcpAuth'", status_code=401)
+    return validated.bcpAuth, validated.roles
+
+
 def _handler_impl(event: dict[str, Any], context: object) -> dict[str, Any]:
     """
     POST /v1/onboarding/register
@@ -115,42 +145,53 @@ def _handler_impl(event: dict[str, Any], context: object) -> dict[str, Any]:
     Returns: { vendorCode, status }
 
     JWT-only identity:
-    - vendor identity is resolved from JWT claim "lhcode"
-    - body vendorCode is ignored if present and conflicting
+    - vendor identity is resolved from JWT claim "bcpAuth"
+    - body vendorCode must match the authenticated vendor if provided
     """
     body = _parse_body(event.get("body"))
     vendor_code_raw = body.get("vendorCode") or body.get("vendor_code")
     vendor_name = (body.get("vendorName") or body.get("vendor_name") or "").strip()
-    auth = (event.get("requestContext") or {}).get("authorizer") or {}
-    jwt_claims = auth.get("jwt", {}).get("claims", {}) if isinstance(auth.get("jwt"), dict) else {}
-    vendor_code = str(jwt_claims.get("lhcode") or auth.get("lhcode") or "").strip().upper()
-    if not vendor_code:
-        return _response(401, {"error": {"code": "AUTH_ERROR", "message": "Missing required lhcode claim"}})
+    try:
+        vendor_code, groups = _resolve_vendor_claims(event)
+    except AuthError as e:
+        return _error(e.status_code, "FORBIDDEN" if e.status_code == 403 else "AUTH_ERROR", e.message)
 
+    requested_vendor: str | None = None
     if vendor_code_raw:
         try:
-            body_vendor = _validate_vendor_code(vendor_code_raw)
+            requested_vendor = _validate_vendor_code(vendor_code_raw)
         except ValueError as e:
-            return _response(400, {"error": {"code": "VALIDATION_ERROR", "message": str(e)}})
-        if body_vendor != vendor_code:
-            log_json(
-                "WARN",
-                "onboarding_vendor_code_ignored",
-                jwtVendor=vendor_code,
-                bodyVendor=body_vendor,
-            )
+            return _error(400, "VALIDATION_ERROR", str(e))
+
+    decision = evaluate_policy(
+        PolicyContext(
+            surface="VENDOR",
+            action="REGISTRY_WRITE",
+            vendor_code=vendor_code,
+            target_vendor_code=None,
+            operation_code=None,
+            requested_source_vendor_code=requested_vendor,
+            is_admin=False,
+            groups=groups,
+            query={},
+        )
+    )
+    if not decision.allow:
+        return add_cors_to_response(policy_denied_response(decision))
 
     try:
         with _get_connection() as conn:
             _ensure_vendor(conn, vendor_code, vendor_name or vendor_code)
-        return _response(200, {"vendorCode": vendor_code, "status": "REGISTERED"})
+        return _success({"vendorCode": vendor_code, "status": "REGISTERED"})
 
     except ConnectionError as e:
-        return _response(503, {"error": {"code": "DB_ERROR", "message": str(e)}})
+        return _error(503, "DB_ERROR", str(e))
     except Exception as e:
-        return _response(
+        return _error(
             500,
-            {"error": {"code": "INTERNAL_ERROR", "message": str(e), "details": {"type": type(e).__name__}}},
+            "INTERNAL_ERROR",
+            str(e),
+            details={"type": type(e).__name__},
         )
 
 
@@ -159,9 +200,17 @@ def _safe_handler(event: dict[str, Any], context: object) -> dict[str, Any]:
     try:
         return with_observability(_handler_impl, "onboarding")(event, context)
     except Exception as e:
-        return _response(
+        log_json(
+            "ERROR",
+            "onboarding_unhandled",
+            error=str(e),
+            errorType=type(e).__name__,
+        )
+        return _error(
             500,
-            {"error": {"code": "INTERNAL_ERROR", "message": str(e), "details": {"type": type(e).__name__}}},
+            "INTERNAL_ERROR",
+            str(e),
+            details={"type": type(e).__name__},
         )
 
 

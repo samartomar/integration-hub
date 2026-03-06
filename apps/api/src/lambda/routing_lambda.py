@@ -55,12 +55,7 @@ from observability import emit_metric, get_context, get_context_from_parsed, get
 from mapping_constants import FROM_CANONICAL_RESPONSE, TO_CANONICAL_REQUEST
 from routing.transform import apply_mapping
 from policy_engine import PolicyContext, evaluate_policy
-from jwt_auth import (
-    JwtValidationError,
-    load_jwt_auth_config_from_env,
-    validate_jwt_and_map_vendor,
-)
-from vendor_identity import VendorAuthError, VendorForbiddenError, resolve_vendor_code
+from bcp_auth import AuthError, validate_authorizer_claims, validate_jwt
 
 try:
     from aws_xray_sdk.core import xray_recorder
@@ -594,19 +589,6 @@ def _process_response_pipeline(
     write_audit_event(conn, transaction_id, source, "RESPONSE_FROM_CANONICAL_SUCCESS", {})
 
     return (canonical_response, source_response, None)
-
-
-# --- Auth: resolve sourceVendor (JWT only; vendor_identity used elsewhere) ---
-
-def resolve_vendor_from_api_key(conn: Any, api_key_value: str) -> str | None:
-    """
-    Look up vendor_code by API key. Uses vendor_identity.resolve_vendor_code.
-    Returns vendor_code if valid, None if missing/invalid (caller handles 401/403).
-    """
-    try:
-        return resolve_vendor_code(conn, api_key_value)
-    except (VendorAuthError, VendorForbiddenError):
-        return None
 
 
 def _canonical_request_body(body: Any, source_vendor: str | None) -> Any:
@@ -2000,20 +1982,35 @@ def _handler_impl(event: dict[str, Any], context: object) -> dict[str, Any]:
     auth_header_raw = h_lower.get("authorization")
     auth_header = str(auth_header_raw).strip() if auth_header_raw else ""
     has_bearer = auth_header.lower().startswith("bearer ")
+    auth = (event.get("requestContext") or {}).get("authorizer") or {}
+    jwt_claims = auth.get("jwt", {}).get("claims", {}) if isinstance(auth.get("jwt"), dict) else {}
+    has_authorizer_claims = isinstance(jwt_claims, dict) and bool(jwt_claims)
 
     source: str | None = None
 
-    if has_bearer:
-        jwt_config = load_jwt_auth_config_from_env()
-        if not jwt_config:
-            auth_err = auth_error("JWT auth not configured. Set IDP_JWKS_URL to enable.")
-            _emit_route_failed(None, transaction_id, "system", auth_err)
-            emit_metric("ExecuteAuthFailed", operation=ctx.get("operation") or "-")
-            log_json("WARN", "AUTH_ERROR", ctx=ctx, error="JWT auth not configured")
-            return err_t(auth_err)
+    if has_bearer or has_authorizer_claims:
+        expected_aud = (
+            os.environ.get("RUNTIME_API_AUDIENCE")
+            or os.environ.get("IDP_AUDIENCE")
+            or "api://default"
+        ).strip()
+        required_scope = (os.environ.get("EXECUTE_SCOPE") or "").strip() or None
         try:
-            result = validate_jwt_and_map_vendor(auth_header, jwt_config, None)
-            vendor_code_from_jwt = result.vendor_code
+            if has_authorizer_claims:
+                result = validate_authorizer_claims(
+                    jwt_claims,
+                    expected_audience=expected_aud,
+                    required_scope=required_scope,
+                    allow_vendor=True,
+                )
+            else:
+                result = validate_jwt(
+                    auth_header,
+                    expected_audience=expected_aud,
+                    required_scope=required_scope,
+                    allow_vendor=True,
+                )
+            vendor_code_from_jwt = result.bcpAuth
             with _get_connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
@@ -2053,17 +2050,16 @@ def _handler_impl(event: dict[str, Any], context: object) -> dict[str, Any]:
                     "AUTH_JWT_SUCCEEDED",
                     {
                         "vendor_code": source,
-                        "sub": str(result.claims.get("sub", ""))[:64],
-                        "issuer": jwt_config.issuer,
-                        "audience": jwt_config.audiences[0] if jwt_config.audiences else None,
-                        "vendorClaim": jwt_config.vendor_claim,
+                        "sub": str(result.subject or "")[:64],
+                        "issuer": (os.environ.get("IDP_ISSUER") or "").strip().rstrip("/"),
+                        "audience": expected_aud,
+                        "vendorClaim": "bcpAuth",
+                        "scope": required_scope,
                     },
                 )
-        except JwtValidationError as e:
+        except AuthError as e:
             reason = e.code.lower() if e.code else "validation_failed"
-            auth_err = auth_error(
-                "Invalid or expired token" if "token" in reason or "expired" in reason else e.message
-            )
+            auth_err = forbidden(e.message) if e.status_code == 403 else auth_error(e.message)
             with _get_connection() as conn:
                 write_audit_event(
                     conn, transaction_id, "system", "AUTH_JWT_FAILED",

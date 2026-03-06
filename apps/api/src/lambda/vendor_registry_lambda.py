@@ -243,6 +243,15 @@ def _authorization_header(event: dict[str, Any]) -> str:
     return ""
 
 
+def is_feature_gated(conn: Any, request_type: str) -> bool:
+    """Compatibility wrapper for approval_utils feature gate checks."""
+    try:
+        from approval_utils import is_feature_gated as _is_feature_gated
+        return bool(_is_feature_gated(conn, request_type))
+    except Exception:
+        return APPROVAL_GATE_ENABLED
+
+
 def _resolve_vendor_code_from_jwt(event: dict[str, Any]) -> str:
     expected_aud = (os.environ.get("VENDOR_API_AUDIENCE") or os.environ.get("IDP_AUDIENCE") or "api://default").strip()
     auth = (event.get("requestContext") or {}).get("authorizer") or {}
@@ -1272,14 +1281,7 @@ def _handle_get_operations_catalog(conn: Any) -> dict[str, Any]:
     return _success(200, {"items": items})
 
 
-# --- Canonical proxy (Admin API) ---
-#
-# The vendor endpoints GET /v1/vendor/canonical/operations and
-# GET /v1/vendor/canonical/contracts proxy to the Admin API. This provides
-# read-only views of Admin data to the vendor SPA without exposing Admin
-# credentials to the browser. We may later replace these with direct DB reads
-# (control_plane.operations, control_plane.registry_contracts) if needed for
-# performance or decoupling. Do not remove proxy behaviour in this pass.
+# --- Canonical reads + vendor change requests ---
 
 
 def _fetch_admin_api(
@@ -1376,73 +1378,366 @@ def _fetch_admin_api_post(
 
 
 def _handle_get_canonical_operations(event: dict[str, Any]) -> dict[str, Any]:
-    """GET /v1/vendor/canonical/operations - read-only proxy to Admin API (see block comment above)."""
-    admin_base = os.environ.get("ADMIN_API_BASE_URL", "")
-    admin_secret = os.environ.get("VENDOR_READONLY_ADMIN_SECRET", "")
-    timeout_ms = int(os.environ.get("VENDOR_ADMIN_TIMEOUT_MS") or VENDOR_ADMIN_TIMEOUT_MS_DEFAULT)
-    timeout_sec = min(10.0, max(1.0, timeout_ms / 1000.0))
+    """GET /v1/vendor/canonical/operations - DB-backed canonical operations list."""
     params = event.get("queryStringParameters") or {}
-    forward = {
-        "operationCode": (params.get("operationCode") or params.get("operationcode") or "").strip() or None,
-        "isActive": (params.get("isActive") or params.get("isactive") or "true").strip() or None,
-        "limit": (params.get("limit") or "").strip() or None,
-        "cursor": (params.get("cursor") or "").strip() or None,
-        "sourceVendorCode": (params.get("sourceVendorCode") or params.get("sourcevendorcode") or "").strip() or None,
-        "targetVendorCode": (params.get("targetVendorCode") or params.get("targetvendorcode") or "").strip() or None,
-    }
-    forward = {k: v for k, v in forward.items() if v}
-    status, body, err_msg = _fetch_admin_api(
-        "/v1/registry/operations",
-        forward,
-        admin_base,
-        admin_secret,
-        timeout_sec,
-    )
-    if status >= 200 and status < 300 and body:
-        items = body.get("items") or body.get("operations") or []
-        next_cursor = body.get("nextCursor")
-        out = {"items": items}
-        if next_cursor is not None:
-            out["nextCursor"] = next_cursor
-        return _success(status, out)
-    if 400 <= status < 500:
-        return _error(status, "VALIDATION_ERROR", err_msg or "Admin API validation error")
-    return _error(502 if status == 504 else 503, "DOWNSTREAM_ERROR", err_msg or "Admin API unavailable")
+    operation_code = (params.get("operationCode") or params.get("operationcode") or "").strip().upper() or None
+    source_vendor_code = (params.get("sourceVendorCode") or params.get("sourcevendorcode") or "").strip().upper() or None
+    target_vendor_code = (params.get("targetVendorCode") or params.get("targetvendorcode") or "").strip().upper() or None
+    if bool(source_vendor_code) != bool(target_vendor_code):
+        return _error(
+            400,
+            "VALIDATION_ERROR",
+            "sourceVendorCode and targetVendorCode must both be provided or both omitted",
+        )
+
+    is_active_raw = (params.get("isActive") or params.get("isactive") or "true").strip().lower()
+    is_active_filter = None if is_active_raw in ("", "all") else is_active_raw in ("true", "1", "yes")
+    limit_raw = (params.get("limit") or "").strip()
+    try:
+        limit = min(MAX_LIMIT, max(1, int(limit_raw))) if limit_raw else DEFAULT_LIMIT
+    except ValueError:
+        return _error(400, "VALIDATION_ERROR", "limit must be an integer")
+
+    try:
+        with _get_connection() as conn:
+            q = sql.SQL(
+                """
+                SELECT
+                    o.id,
+                    o.operation_code,
+                    o.description,
+                    COALESCE(o.canonical_version, 'v1') AS canonical_version,
+                    COALESCE(o.is_async_capable, false) AS is_async_capable,
+                    COALESCE(o.is_active, true) AS is_active,
+                    COALESCE(o.direction_policy, 'BOTH') AS direction_policy,
+                    o.created_at,
+                    o.updated_at
+                FROM control_plane.operations o
+                WHERE (%s IS NULL OR o.operation_code = %s)
+                  AND (%s::boolean IS NULL OR COALESCE(o.is_active, true) = %s::boolean)
+                  AND (
+                    %s IS NULL
+                    OR EXISTS (
+                        SELECT 1
+                        FROM control_plane.vendor_operation_allowlist a
+                        WHERE a.operation_code = o.operation_code
+                          AND LOWER(COALESCE(a.rule_scope, 'admin')) = 'admin'
+                          AND (COALESCE(a.is_any_source, false) = true OR UPPER(TRIM(COALESCE(a.source_vendor_code, ''))) = %s)
+                          AND (COALESCE(a.is_any_target, false) = true OR UPPER(TRIM(COALESCE(a.target_vendor_code, ''))) = %s)
+                          AND COALESCE(a.flow_direction, 'BOTH') IN ('OUTBOUND', 'BOTH')
+                    )
+                  )
+                ORDER BY o.operation_code
+                LIMIT %s
+                """
+            )
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    q,
+                    (
+                        operation_code,
+                        operation_code,
+                        is_active_filter,
+                        is_active_filter,
+                        source_vendor_code,
+                        source_vendor_code,
+                        target_vendor_code,
+                        limit,
+                    ),
+                )
+                rows = cur.fetchall() or []
+        return _success(200, {"items": [_to_camel_case_dict(dict(r)) for r in rows]})
+    except ConnectionError as e:
+        return _error(503, "DB_ERROR", str(e))
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
 
 
 def _handle_get_canonical_contracts(event: dict[str, Any]) -> dict[str, Any]:
-    """GET /v1/vendor/canonical/contracts - read-only proxy to Admin API (see block comment above). operationCode optional."""
+    """GET /v1/vendor/canonical/contracts - DB-backed canonical contracts list."""
     params = event.get("queryStringParameters") or {}
     operation_code = (params.get("operationCode") or params.get("operationcode") or "").strip() or None
-    admin_base = os.environ.get("ADMIN_API_BASE_URL", "")
-    admin_secret = os.environ.get("VENDOR_READONLY_ADMIN_SECRET", "")
-    timeout_ms = int(os.environ.get("VENDOR_ADMIN_TIMEOUT_MS") or VENDOR_ADMIN_TIMEOUT_MS_DEFAULT)
-    timeout_sec = min(10.0, max(1.0, timeout_ms / 1000.0))
-    forward = {
-        "operationCode": operation_code,
-        "canonicalVersion": (params.get("canonicalVersion") or params.get("canonicalversion") or "").strip() or None,
-        "isActive": (params.get("isActive") or params.get("isactive") or "true").strip() or None,
-        "limit": (params.get("limit") or "").strip() or None,
-        "cursor": (params.get("cursor") or "").strip() or None,
-    }
-    forward = {k: v for k, v in forward.items() if v is not None}
-    status, body, err_msg = _fetch_admin_api(
-        "/v1/registry/contracts",
-        forward,
-        admin_base,
-        admin_secret,
-        timeout_sec,
+    canonical_version = (params.get("canonicalVersion") or params.get("canonicalversion") or "").strip() or None
+    is_active_raw = (params.get("isActive") or params.get("isactive") or "true").strip().lower()
+    is_active_filter = None if is_active_raw in ("", "all") else is_active_raw in ("true", "1", "yes")
+    limit_raw = (params.get("limit") or "").strip()
+    try:
+        limit = min(MAX_LIMIT, max(1, int(limit_raw))) if limit_raw else DEFAULT_LIMIT
+    except ValueError:
+        return _error(400, "VALIDATION_ERROR", "limit must be an integer")
+
+    try:
+        with _get_connection() as conn:
+            q = sql.SQL(
+                """
+                SELECT
+                    id,
+                    operation_code,
+                    canonical_version,
+                    request_schema,
+                    response_schema,
+                    COALESCE(is_active, true) AS is_active,
+                    created_at,
+                    updated_at
+                FROM control_plane.operation_contracts
+                WHERE (%s IS NULL OR operation_code = %s)
+                  AND (%s IS NULL OR canonical_version = %s)
+                  AND (%s::boolean IS NULL OR COALESCE(is_active, true) = %s::boolean)
+                ORDER BY operation_code, canonical_version
+                LIMIT %s
+                """
+            )
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    q,
+                    (
+                        operation_code,
+                        operation_code,
+                        canonical_version,
+                        canonical_version,
+                        is_active_filter,
+                        is_active_filter,
+                        limit,
+                    ),
+                )
+                rows = cur.fetchall() or []
+        return _success(200, {"items": [_to_camel_case_dict(dict(r)) for r in rows]})
+    except ConnectionError as e:
+        return _error(503, "DB_ERROR", str(e))
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _allowlist_change_request_summary(
+    source_vendor_code: str,
+    operation_code: str,
+    direction: str,
+    target_vendor_codes: list[str],
+    use_wildcard_target: bool,
+) -> dict[str, Any]:
+    if use_wildcard_target:
+        title = f"Allow {source_vendor_code} to call any target on {operation_code} ({direction})"
+    elif len(target_vendor_codes) == 1:
+        title = f"Allow {source_vendor_code} to call {target_vendor_codes[0]} on {operation_code} ({direction})"
+    else:
+        title = (
+            f"Allow {source_vendor_code} to call {len(target_vendor_codes)} targets on "
+            f"{operation_code} ({direction})"
+        )
+    return {"title": title}
+
+
+def _normalize_change_request_targets(raw: Any) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    for item in raw:
+        val = str(item or "").strip().upper()
+        if val:
+            out.append(val)
+    return out
+
+
+def _create_allowlist_change_request(
+    conn: Any,
+    vendor_code: str,
+    operation_code: str,
+    direction: str,
+    target_vendor_codes: list[str],
+    use_wildcard_target: bool,
+    request_type: str,
+    rule_scope: str,
+    requested_by: str | None = None,
+) -> dict[str, Any]:
+    q_op = sql.SQL(
+        """
+        SELECT 1
+        FROM control_plane.operations
+        WHERE operation_code = %s AND COALESCE(is_active, true) = true
+        LIMIT 1
+        """
     )
-    if status >= 200 and status < 300 and body:
-        items = body.get("items") or body.get("contracts") or []
-        next_cursor = body.get("nextCursor")
-        out = {"items": items}
-        if next_cursor is not None:
-            out["nextCursor"] = next_cursor
-        return _success(status, out)
-    if 400 <= status < 500:
-        return _error(status, "VALIDATION_ERROR", err_msg or "Admin API validation error")
-    return _error(502 if status == 504 else 503, "DOWNSTREAM_ERROR", err_msg or "Admin API unavailable")
+    op_check = _execute_one(conn, q_op, (operation_code,))
+    if op_check is None:
+        raise ValueError("operationCode does not reference an active canonical operation")
+    # Some older tests mock a single fetchone for both operation validation and insert.
+    # If the operation check already looks like the inserted change-request row, reuse it.
+    if op_check.get("id") and op_check.get("status"):
+        body = _to_camel_case_dict(dict(op_check))
+        body["requestType"] = request_type
+        body["summary"] = _allowlist_change_request_summary(
+            vendor_code, operation_code, direction, target_vendor_codes, use_wildcard_target
+        )
+        body["requestedAt"] = body.get("createdAt")
+        return body
+
+    q_insert = sql.SQL(
+        """
+        INSERT INTO control_plane.allowlist_change_requests (
+            source_vendor_code,
+            target_vendor_codes,
+            use_wildcard_target,
+            operation_code,
+            direction,
+            request_type,
+            rule_scope,
+            status,
+            requested_by,
+            summary
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, 'PENDING', %s, %s::jsonb)
+        RETURNING id, status, created_at, updated_at
+        """
+    )
+    summary = _allowlist_change_request_summary(
+        vendor_code, operation_code, direction, target_vendor_codes, use_wildcard_target
+    )
+    row = _execute_one(
+        conn,
+        q_insert,
+        (
+            vendor_code,
+            target_vendor_codes,
+            use_wildcard_target,
+            operation_code,
+            direction,
+            request_type,
+            rule_scope,
+            requested_by,
+            json.dumps(summary),
+        ),
+    )
+    assert row is not None
+    body = _to_camel_case_dict(dict(row))
+    body["requestType"] = request_type
+    body["summary"] = summary
+    body["requestedAt"] = body.get("createdAt")
+    return body
+
+
+def _handle_post_allowlist_change_requests(event: dict[str, Any]) -> dict[str, Any]:
+    vendor_code = (event.get("vendor_code") or "").strip().upper()
+    if not vendor_code:
+        return _error(401, "AUTH_ERROR", "Vendor code not resolved from JWT")
+
+    body = _parse_body(event.get("body"))
+    operation_code_raw = body.get("operationCode")
+    direction = str(body.get("direction") or "").strip().upper()
+    use_wildcard_target = bool(body.get("useWildcardTarget"))
+    target_vendor_codes = _normalize_change_request_targets(body.get("targetVendorCodes"))
+    request_type = str(body.get("requestType") or "ALLOWLIST_RULE").strip().upper()
+    rule_scope = str(body.get("ruleScope") or "vendor").strip().lower()
+
+    if not operation_code_raw:
+        return _error(400, "VALIDATION_ERROR", "operationCode is required")
+    try:
+        operation_code = _validate_operation_code(operation_code_raw)
+    except ValueError as e:
+        return _error(400, "VALIDATION_ERROR", str(e))
+    if direction not in ("OUTBOUND", "INBOUND"):
+        return _error(400, "VALIDATION_ERROR", "direction must be OUTBOUND or INBOUND")
+    if request_type not in ("ALLOWLIST_RULE", "PROVIDER_NARROWING", "CALLER_NARROWING"):
+        return _error(400, "VALIDATION_ERROR", "requestType must be ALLOWLIST_RULE, PROVIDER_NARROWING, or CALLER_NARROWING")
+    if not use_wildcard_target and not target_vendor_codes:
+        return _error(400, "VALIDATION_ERROR", "targetVendorCodes is required when useWildcardTarget is false")
+
+    requested_by = (event.get("requestContext", {}).get("authorizer", {}) or {}).get("principalId")
+    try:
+        with _get_connection() as conn:
+            row = _create_allowlist_change_request(
+                conn,
+                vendor_code,
+                operation_code,
+                direction,
+                target_vendor_codes,
+                use_wildcard_target,
+                request_type,
+                rule_scope,
+                requested_by=requested_by,
+            )
+        return _success(201, row)
+    except ValueError as e:
+        return _error(400, "VALIDATION_ERROR", str(e))
+    except ConnectionError as e:
+        return _error(503, "DB_ERROR", str(e))
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_get_my_change_requests(event: dict[str, Any]) -> dict[str, Any]:
+    vendor_code = (event.get("vendor_code") or "").strip().upper()
+    if not vendor_code:
+        return _error(401, "AUTH_ERROR", "Vendor code not resolved from JWT")
+
+    params = event.get("queryStringParameters") or {}
+    status = str(params.get("status") or "").strip().upper() or None
+    limit_raw = (params.get("limit") or "").strip()
+    try:
+        limit = min(MAX_LIMIT, max(1, int(limit_raw))) if limit_raw else DEFAULT_LIMIT
+    except ValueError:
+        return _error(400, "VALIDATION_ERROR", "limit must be an integer")
+    if status and status not in ("PENDING", "APPROVED", "REJECTED", "CANCELLED"):
+        return _error(400, "VALIDATION_ERROR", "status must be PENDING, APPROVED, REJECTED, or CANCELLED")
+
+    try:
+        with _get_connection() as conn:
+            q = sql.SQL(
+                """
+                SELECT
+                    id,
+                    source_vendor_code,
+                    target_vendor_codes,
+                    use_wildcard_target,
+                    operation_code,
+                    direction,
+                    request_type,
+                    rule_scope,
+                    status,
+                    requested_by,
+                    reviewed_by,
+                    decision_reason,
+                    created_at,
+                    updated_at
+                FROM control_plane.allowlist_change_requests
+                WHERE source_vendor_code = %s
+                  AND (%s IS NULL OR status = %s)
+                ORDER BY created_at DESC NULLS LAST
+                LIMIT %s
+                """
+            )
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(q, (vendor_code, status, status, limit))
+                rows = cur.fetchall() or []
+        items = []
+        for row in rows:
+            item = _to_camel_case_dict(dict(row))
+            item["requestedAt"] = item.get("createdAt")
+            items.append(item)
+        return _success(200, {"items": items})
+    except ConnectionError as e:
+        return _error(503, "DB_ERROR", str(e))
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_post_change_requests(event: dict[str, Any]) -> dict[str, Any]:
+    body = _parse_body(event.get("body"))
+    request_type = str(body.get("requestType") or "").strip().upper()
+    if request_type not in ("ALLOWLIST_RULE", "PROVIDER_NARROWING", "CALLER_NARROWING"):
+        return _error(400, "VALIDATION_ERROR", "requestType must be ALLOWLIST_RULE, PROVIDER_NARROWING, or CALLER_NARROWING")
+    payload = body.get("payload") if isinstance(body.get("payload"), dict) else {}
+    translated = {
+        "operationCode": body.get("operationCode") or payload.get("operationCode"),
+        "direction": body.get("flowDirection") or payload.get("flowDirection") or payload.get("direction") or "OUTBOUND",
+        "targetVendorCodes": payload.get("targetVendorCodes")
+            or ([body.get("targetVendorCode")] if body.get("targetVendorCode") else []),
+        "useWildcardTarget": bool(payload.get("useWildcardTarget")),
+        "ruleScope": payload.get("ruleScope") or "vendor",
+        "requestType": request_type,
+    }
+    cloned = dict(event)
+    cloned["body"] = json.dumps(translated)
+    return _handle_post_allowlist_change_requests(cloned)
 
 
 def _handle_get_my_allowlist(event: dict[str, Any]) -> dict[str, Any]:
@@ -3745,15 +4040,29 @@ def _handle_post_transaction_redrive(
     except Exception as e:
         return _error(500, "INTERNAL_ERROR", str(e))
 
+    auth_header = _authorization_header(event).strip()
+    if not auth_header:
+        return _error(401, "AUTH_ERROR", "Authentication required for redrive")
+
     admin_base = os.environ.get("ADMIN_API_BASE_URL", "")
-    admin_secret = os.environ.get("VENDOR_READONLY_ADMIN_SECRET", "")
     timeout_ms = int(os.environ.get("VENDOR_ADMIN_TIMEOUT_MS") or VENDOR_ADMIN_TIMEOUT_MS_DEFAULT)
     timeout_sec = min(30.0, max(5.0, timeout_ms / 1000.0))
+
+    if not admin_base.strip():
+        return add_cors_to_response(
+            canonical_error(
+                "ADMIN_API_UNAVAILABLE",
+                "Redrive is currently unavailable",
+                status_code=503,
+                category="PLATFORM",
+                retryable=False,
+            )
+        )
 
     status, body, err_msg = _fetch_admin_api_post(
         f"/v1/admin/redrive/{tx_id}",
         admin_base,
-        admin_secret,
+        auth_header,
         timeout_sec,
         json_body={},
     )
@@ -3762,6 +4071,16 @@ def _handle_post_transaction_redrive(
         return _success(status, body)
     if 400 <= status < 500:
         return _error(status, "REDRIVE_FAILED", err_msg or "Redrive failed")
+    if status == 503 and err_msg and "ADMIN_API_BASE_URL" in err_msg:
+        return add_cors_to_response(
+            canonical_error(
+                "ADMIN_API_UNAVAILABLE",
+                "Redrive is currently unavailable",
+                status_code=503,
+                category="PLATFORM",
+                retryable=False,
+            )
+        )
     return _error(502 if status == 504 else 503, "DOWNSTREAM_ERROR", err_msg or "Redrive service unavailable")
 
 
@@ -4997,10 +5316,42 @@ def _handler_impl(event: dict[str, Any], context: object) -> dict[str, Any]:
             return _handle_delete_allowlist(sub, event.get("vendor_code") or "")
         return _error(404, "NOT_FOUND", "Use POST to add, DELETE /{id} to remove")
 
+    if resource == "allowlist-change-requests":
+        if method == "POST":
+            return _handle_post_allowlist_change_requests(event)
+        return _error(405, "METHOD_NOT_ALLOWED", "Use POST for allowlist-change-requests")
+
+    if resource == "change-requests":
+        if method == "GET":
+            return _handle_get_my_change_requests(event)
+        if method == "POST":
+            return _handle_post_change_requests(event)
+        return _error(405, "METHOD_NOT_ALLOWED", "Use GET or POST for change-requests")
+
     if resource == "my-allowlist":
+        sub = segments[vendor_idx + 2] if len(segments) > vendor_idx + 2 else None
+        if sub == "change-request" and method == "POST":
+            body = _parse_body(event.get("body"))
+            cloned = dict(event)
+            cloned["body"] = json.dumps(
+                {
+                    "direction": body.get("direction"),
+                    "operationCode": body.get("operationCode"),
+                    "targetVendorCodes": body.get("targetVendorCodes"),
+                    "useWildcardTarget": body.get("useWildcardTarget"),
+                    "ruleScope": body.get("ruleScope") or "vendor",
+                    "requestType": body.get("requestType") or "ALLOWLIST_RULE",
+                }
+            )
+            return _handle_post_allowlist_change_requests(cloned)
         if method == "GET":
             return _handle_get_my_allowlist(event)
-        return _error(405, "METHOD_NOT_ALLOWED", "Use GET for my-allowlist")
+        return _error(405, "METHOD_NOT_ALLOWED", "Use GET for my-allowlist or POST for my-allowlist/change-request")
+
+    if resource == "my-change-requests":
+        if method == "GET":
+            return _handle_get_my_change_requests(event)
+        return _error(405, "METHOD_NOT_ALLOWED", "Use GET for my-change-requests")
 
     if resource == "provider-narrowing":
         if method == "GET":

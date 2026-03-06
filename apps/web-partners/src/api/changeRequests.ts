@@ -89,12 +89,12 @@ export type AllowlistChangeRequestItem = {
   requestedAt?: string;
 };
 
-/** Legacy: list from vendor_change_requests (non-allowlist types). */
+/** Legacy helper name; reads the strict my-change-requests endpoint. */
 export async function listMyChangeRequests(
   status: "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED" = "PENDING"
 ): Promise<ChangeRequest[]> {
   const res = await vendorApi.get<{ items: ChangeRequest[] }>(
-    `/v1/vendor/change-requests?status=${status}`
+    `/v1/vendor/my-change-requests?status=${status}`
   );
   return res.data?.items ?? [];
 }
