@@ -9,16 +9,16 @@ import os
 import time
 import urllib.parse
 import uuid
+from collections.abc import Generator
 from contextlib import contextmanager
-from datetime import datetime, timezone
-from typing import Any, Generator
+from datetime import UTC, datetime
+from typing import Any
 
 import psycopg2
 import psycopg2.errors
 import requests
-from psycopg2.extras import Json, RealDictCursor
-
 from admin_guard import require_admin_secret
+from bcp_auth import AuthError, validate_authorizer_claims, validate_jwt
 from canonical_error import (
     ErrorCode,
     allowlist_denied,
@@ -27,12 +27,12 @@ from canonical_error import (
     build_error,
     contract_not_found,
     db_error,
-    endpoint_not_found,
     downstream_connection_error,
     downstream_http_error,
     downstream_http_error_response_body,
     downstream_invalid_response,
     downstream_timeout,
+    endpoint_not_found,
     endpoint_not_verified,
     forbidden,
     in_flight_error,
@@ -51,11 +51,17 @@ from http_body_utils import (
     PayloadFormatError,
     build_http_request_body_and_headers,
 )
-from observability import emit_metric, get_context, get_context_from_parsed, get_current_ctx, log_json, with_observability
 from mapping_constants import FROM_CANONICAL_RESPONSE, TO_CANONICAL_REQUEST
-from routing.transform import apply_mapping
+from observability import (
+    emit_metric,
+    get_context,
+    get_current_ctx,
+    log_json,
+    with_observability,
+)
 from policy_engine import PolicyContext, evaluate_policy
-from bcp_auth import AuthError, validate_authorizer_claims, validate_jwt
+from psycopg2.extras import Json, RealDictCursor
+from routing.transform import apply_mapping
 
 try:
     from aws_xray_sdk.core import xray_recorder
@@ -464,7 +470,7 @@ def load_vendor_mapping(
         return m
 
 
-def _format_jsonschema_violations(err: "jsonschema.ValidationError") -> list[str]:
+def _format_jsonschema_violations(err: jsonschema.ValidationError) -> list[str]:
     """Flatten jsonschema ValidationError into consistent violation strings: 'field: constraint'."""
     violations: list[str] = []
 
@@ -480,7 +486,7 @@ def _format_jsonschema_violations(err: "jsonschema.ValidationError") -> list[str
             return msg.replace("is not of type", "must be type")
         return msg
 
-    def collect(e: "jsonschema.ValidationError") -> None:
+    def collect(e: jsonschema.ValidationError) -> None:
         path_str = ".".join(str(p) for p in e.path) if e.path else "value"
         norm = _normalize_msg(e.message)
         violations.append(f"{path_str}: {norm}")
@@ -1168,8 +1174,8 @@ def fetch_oauth2_token(auth_profile: dict[str, Any]) -> tuple[str, datetime]:
         expires_in_sec = OAUTH2_DEFAULT_EXPIRES_IN_SEC
 
     safety = min(OAUTH2_TOKEN_SAFETY_MARGIN_SEC, max(0, expires_in_sec - 1))
-    expires_at = datetime.now(timezone.utc).timestamp() + expires_in_sec - safety
-    expires_at_dt = datetime.fromtimestamp(expires_at, tz=timezone.utc)
+    expires_at = datetime.now(UTC).timestamp() + expires_in_sec - safety
+    expires_at_dt = datetime.fromtimestamp(expires_at, tz=UTC)
 
     return access_token.strip(), expires_at_dt
 
@@ -1186,7 +1192,7 @@ def get_oauth2_access_token(auth_profile: dict[str, Any]) -> str:
             json.dumps(auth_profile.get("config") or {}, sort_keys=True).encode()
         ).hexdigest()[:32]
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cached = _oauth_token_cache.get(profile_id)
     if cached:
         expires_at = cached.get("expires_at")
@@ -2886,7 +2892,7 @@ def handler(event: dict[str, Any], context: object) -> dict[str, Any]:
     """Entry point. Adds CORS headers for REST API (execute) responses. Catches unhandled exceptions."""
     try:
         result = _handler_impl_wrapped(event, context)
-        path = (event.get("path") or event.get("rawPath") or "").lower()
+        (event.get("path") or event.get("rawPath") or "").lower()
         if isinstance(result, dict) and "statusCode" in result:
             add_cors_to_response(result)
         return result

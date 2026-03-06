@@ -7,32 +7,31 @@ import json
 import os
 import re
 import socket
-import secrets
 import urllib.parse
 import uuid as _uuid
+from collections.abc import Generator
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
-from typing import Any, Generator
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import psycopg2
 import requests
-from psycopg2 import sql
-from psycopg2.extras import RealDictCursor
-
+from bcp_auth import AuthError, validate_authorizer_claims, validate_jwt
 from canonical_response import canonical_error, canonical_ok
+from contract_utils import load_effective_contract_optional
 from cors import add_cors_to_response
+from feature_flags import is_feature_enabled_for_vendor
 from http_body_utils import (
     DEFAULT_MAX_BINARY_BYTES,
     PayloadFormatError,
     build_http_request_body_and_headers,
 )
-from template_utils import render_template_string
 from mapping_constants import MAPPING_DIRECTIONS
-from policy_engine import PolicyContext, evaluate_policy
-from bcp_auth import AuthError, validate_authorizer_claims, validate_jwt
-from contract_utils import load_effective_contract_optional
-from feature_flags import is_feature_enabled_for_vendor
 from platform_rollout import get_platform_rollout_state
+from policy_engine import PolicyContext, evaluate_policy
+from psycopg2 import sql
+from psycopg2.extras import RealDictCursor
+from template_utils import render_template_string
 
 try:
     from routing.transform import apply_mapping as _apply_mapping
@@ -329,7 +328,6 @@ def _snake_to_camel(key: str) -> str:
 def _to_camel_case_dict(row: dict[str, Any]) -> dict[str, Any]:
     import datetime as _datetime
     import decimal as _decimal
-    import uuid as _uuid
 
     result = {}
     for k, v in row.items():
@@ -597,7 +595,7 @@ def _update_endpoint_verification(
     """Update vendor_endpoints by id. Always update by id, never by vendor_code/operation_code.
     On success: verification_status, last_verified_at, last_verification_error, verification_request.
     Endpoints with auth_profile_id IS NULL are valid and updated the same way."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     verification_request_json = json.dumps(verification_request) if verification_request else None
     q = sql.SQL(
         """
@@ -1193,7 +1191,7 @@ def _handle_post_endpoints_verify(event: dict[str, Any], conn: Any, vendor_code:
         _write_audit_event(conn, tx_id, "ENDPOINT_VERIFIED", vendor_code, {"operationCode": operation_code})
         out = _to_camel_case_dict(dict(row))
         out["verificationStatus"] = "VERIFIED"
-        out["lastVerifiedAt"] = datetime.now(timezone.utc).isoformat()
+        out["lastVerifiedAt"] = datetime.now(UTC).isoformat()
         out["lastVerificationError"] = None
         out["endpointHealth"] = "healthy"
         out["verificationResult"] = {"status": "VERIFIED", "httpStatus": status_code, "responseSnippet": snippet_or_error}
@@ -1212,7 +1210,7 @@ def _handle_post_endpoints_verify(event: dict[str, Any], conn: Any, vendor_code:
     )
     out = _to_camel_case_dict(dict(row))
     out["verificationStatus"] = "FAILED"
-    out["lastVerifiedAt"] = datetime.now(timezone.utc).isoformat()
+    out["lastVerifiedAt"] = datetime.now(UTC).isoformat()
     out["lastVerificationError"] = error_msg
     out["endpointHealth"] = "error"
     out["verificationResult"] = {"status": "FAILED", "httpStatus": status_code, "responseSnippet": error_msg}
@@ -1753,9 +1751,10 @@ def _handle_get_my_change_requests(event: dict[str, Any]) -> dict[str, Any]:
 
 
 def _handle_post_auth_profile_test_connection(event: dict[str, Any]) -> dict[str, Any]:
-    from registry_lambda import _handle_post_auth_profile_test_connection as _delegate
+    import registry_lambda as _registry_lambda
 
-    return _delegate(event)
+    _registry_lambda.socket = socket
+    return _registry_lambda._handle_post_auth_profile_test_connection(event)
 
 
 def _handle_post_auth_profile_token_preview(event: dict[str, Any]) -> dict[str, Any]:
@@ -3230,7 +3229,7 @@ def _handle_get_eligible_access(event: dict[str, Any]) -> dict[str, Any]:
     op_raw = (qp.get("operationcode") or "").strip().upper()
     if not op_raw:
         return _error(400, "VALIDATION_ERROR", "operationCode query param is required")
-    direction_raw = (qp.get("direction") or "").strip().lower()
+    (qp.get("direction") or "").strip().lower()
     me = vendor_code.upper()
     try:
         with _get_connection() as conn:
@@ -3882,8 +3881,8 @@ def _handle_post_export_job(event: dict[str, Any]) -> dict[str, Any]:
     export_type_raw = (body.get("exportType") or body.get("export_type") or "TXN_7D").strip().upper()
     if export_type_raw not in ("CONFIG_ONLY", "TXN_7D", "EVERYTHING"):
         return _error(400, "VALIDATION_ERROR", "exportType must be CONFIG_ONLY, TXN_7D, or EVERYTHING")
-    from_dt = datetime.now(timezone.utc) - timedelta(days=7)
-    to_dt = datetime.now(timezone.utc)
+    from_dt = datetime.now(UTC) - timedelta(days=7)
+    to_dt = datetime.now(UTC)
     if body.get("from"):
         try:
             from_dt = datetime.fromisoformat(str(body["from"]).replace("Z", "+00:00"))
@@ -4860,7 +4859,7 @@ def save_vendor_mappings_for_flow(
             )
             _execute_mutation(conn, q_deactivate, (vendor_code, operation_code, canonical_version, direction, fd))
         else:
-            mapping_json = json.dumps(desired)
+            json.dumps(desired)
             _upsert_vendor_mapping(
                 conn, vendor_code, operation_code, canonical_version, direction,
                 desired, True, request_id, flow_direction=fd,
