@@ -1008,6 +1008,407 @@ export async function executeAiIntegration(
   };
 }
 
+// --- Partner Syntegris API (/v1/vendor/syntegris/*) ---
+// Vendor-scoped; sourceVendor derived from JWT. Do NOT send sourceVendor from client.
+
+/** Canonical operation list item */
+export interface CanonicalOperationItem {
+  operationCode: string;
+  latestVersion: string;
+  title?: string;
+  description?: string;
+  versions?: string[];
+}
+
+/** Canonical operation detail with schemas and examples */
+export interface CanonicalOperationDetail {
+  operationCode: string;
+  version: string;
+  latestVersion?: string;
+  title?: string;
+  description?: string;
+  versionAliases?: string[];
+  requestPayloadSchema: Record<string, unknown>;
+  responsePayloadSchema: Record<string, unknown>;
+  examples: {
+    request: Record<string, unknown>;
+    response: Record<string, unknown>;
+    requestEnvelope?: Record<string, unknown>;
+    responseEnvelope?: Record<string, unknown>;
+  };
+}
+
+/** POST /v1/sandbox/request/validate response */
+export interface SandboxValidateResponse {
+  valid: boolean;
+  errors?: Array<{ field: string; message: string }>;
+  normalizedVersion?: string;
+}
+
+/** POST /v1/sandbox/mock/run response */
+export interface SandboxMockRunResponse {
+  operationCode: string;
+  version: string;
+  mode: "MOCK";
+  valid: boolean;
+  requestPayloadValid: boolean;
+  requestEnvelopeValid: boolean;
+  responseEnvelopeValid: boolean;
+  requestEnvelope?: Record<string, unknown>;
+  responseEnvelope?: Record<string, unknown>;
+  notes?: string[];
+  errors?: Array<{ field: string; message: string }>;
+}
+
+/** AI Debugger: debug report shape */
+export interface DebugReport {
+  debugType: "CANONICAL_REQUEST" | "FLOW_DRAFT" | "SANDBOX_RESULT";
+  status: "PASS" | "WARN" | "FAIL";
+  operationCode: string;
+  version: string;
+  summary: string;
+  findings: Array<{
+    severity: "ERROR" | "WARNING" | "INFO";
+    code: string;
+    title: string;
+    message: string;
+    field: string | null;
+    suggestion: string | null;
+  }>;
+  normalizedArtifacts: Record<string, unknown>;
+  notes: string[];
+}
+
+/** Runtime Preflight: POST /v1/runtime/canonical/preflight request */
+export interface CanonicalRuntimePreflightPayload {
+  sourceVendor: string;
+  targetVendor: string;
+  envelope: {
+    operationCode: string;
+    version?: string;
+    direction: string;
+    correlationId?: string;
+    timestamp?: string;
+    context?: Record<string, unknown>;
+    payload: Record<string, unknown>;
+  };
+}
+
+/** Runtime Preflight response */
+export interface CanonicalRuntimePreflightResponse {
+  valid: boolean;
+  status: "READY" | "WARN" | "BLOCKED";
+  operationCode?: string;
+  canonicalVersion?: string;
+  sourceVendor?: string;
+  targetVendor?: string;
+  normalizedEnvelope?: Record<string, unknown>;
+  checks?: Array<{ code: string; status: string; message: string }>;
+  executionPlan?: { mode: string; canExecute: boolean; nextStep?: string };
+  errors?: Array<{ field: string; message: string }>;
+  notes?: string[];
+}
+
+/** Canonical Bridge Execute: POST /v1/runtime/canonical/execute request */
+export interface CanonicalBridgePayload {
+  sourceVendor: string;
+  targetVendor: string;
+  mode: "DRY_RUN" | "EXECUTE";
+  envelope: {
+    operationCode: string;
+    version?: string;
+    direction: string;
+    correlationId?: string;
+    timestamp?: string;
+    context?: Record<string, unknown>;
+    payload: Record<string, unknown>;
+  };
+}
+
+/** Canonical Bridge Execute response */
+export interface CanonicalBridgeResponse {
+  mode: "DRY_RUN" | "EXECUTE";
+  valid: boolean;
+  status: string;
+  operationCode?: string;
+  canonicalVersion?: string;
+  sourceVendor?: string;
+  targetVendor?: string;
+  normalizedEnvelope?: Record<string, unknown>;
+  preflight?: CanonicalRuntimePreflightResponse;
+  executeRequestPreview?: Record<string, unknown>;
+  executionPlan?: { canExecute?: boolean; reason?: string };
+  executeResult?: { statusCode?: number; body?: unknown; error?: string };
+  errors?: Array<{ field: string; message: string }>;
+  notes?: string[];
+}
+
+/** GET /v1/sandbox/canonical/operations */
+export async function listSandboxCanonicalOperations(): Promise<{
+  items: CanonicalOperationItem[];
+}> {
+  const { data } = await vendorApi.get<{ items: CanonicalOperationItem[] }>(
+    "/v1/sandbox/canonical/operations",
+  );
+  return data;
+}
+
+/** GET /v1/sandbox/canonical/operations/{operationCode} */
+export async function getSandboxCanonicalOperation(
+  operationCode: string,
+  version?: string,
+): Promise<CanonicalOperationDetail> {
+  const params = version ? `?version=${encodeURIComponent(version)}` : "";
+  const { data } = await vendorApi.get<CanonicalOperationDetail>(
+    `/v1/sandbox/canonical/operations/${encodeURIComponent(operationCode)}${params}`,
+  );
+  return data;
+}
+
+/** GET /v1/registry/canonical/operations */
+export async function listCanonicalOperations(): Promise<{
+  items: CanonicalOperationItem[];
+}> {
+  const { data } = await vendorApi.get<{ items: CanonicalOperationItem[] }>(
+    "/v1/registry/canonical/operations",
+  );
+  return data;
+}
+
+/** GET /v1/registry/canonical/operations/{operationCode} */
+export async function getCanonicalOperation(
+  operationCode: string,
+  version?: string,
+): Promise<CanonicalOperationDetail> {
+  const params = version ? `?version=${encodeURIComponent(version)}` : "";
+  const { data } = await vendorApi.get<CanonicalOperationDetail>(
+    `/v1/registry/canonical/operations/${encodeURIComponent(operationCode)}${params}`,
+  );
+  return data;
+}
+
+/** POST /v1/sandbox/request/validate */
+export async function validateSandboxRequest(body: {
+  operationCode: string;
+  version?: string;
+  payload: Record<string, unknown>;
+}): Promise<SandboxValidateResponse> {
+  const { data } = await vendorApi.post<SandboxValidateResponse>(
+    "/v1/sandbox/request/validate",
+    body,
+  );
+  return data;
+}
+
+/** POST /v1/sandbox/mock/run */
+export async function runMockSandboxTest(body: {
+  operationCode: string;
+  version?: string;
+  payload: Record<string, unknown>;
+  context?: Record<string, unknown>;
+}): Promise<SandboxMockRunResponse> {
+  const { data } = await vendorApi.post<SandboxMockRunResponse>(
+    "/v1/sandbox/mock/run",
+    body,
+  );
+  return data;
+}
+
+/** POST /v1/ai/debug/request/analyze */
+export async function analyzeDebugRequest(body: {
+  operationCode: string;
+  version?: string;
+  payload: Record<string, unknown>;
+}): Promise<DebugReport> {
+  const { data } = await vendorApi.post<DebugReport>(
+    "/v1/ai/debug/request/analyze",
+    body,
+  );
+  return data;
+}
+
+/** POST /v1/ai/debug/flow-draft/analyze */
+export async function analyzeDebugFlowDraft(body: {
+  draft: Record<string, unknown>;
+}): Promise<DebugReport> {
+  const { data } = await vendorApi.post<DebugReport>(
+    "/v1/ai/debug/flow-draft/analyze",
+    body,
+  );
+  return data;
+}
+
+/** POST /v1/ai/debug/sandbox-result/analyze */
+export async function analyzeDebugSandboxResult(body: {
+  result: Record<string, unknown>;
+}): Promise<DebugReport> {
+  const { data } = await vendorApi.post<DebugReport>(
+    "/v1/ai/debug/sandbox-result/analyze",
+    body,
+  );
+  return data;
+}
+
+/** POST /v1/runtime/canonical/preflight */
+export async function runCanonicalRuntimePreflight(
+  body: CanonicalRuntimePreflightPayload,
+): Promise<CanonicalRuntimePreflightResponse> {
+  const { data } = await vendorApi.post<CanonicalRuntimePreflightResponse>(
+    "/v1/runtime/canonical/preflight",
+    body,
+  );
+  return data;
+}
+
+/** POST /v1/runtime/canonical/execute */
+export async function runCanonicalBridgeExecution(
+  body: CanonicalBridgePayload,
+): Promise<CanonicalBridgeResponse> {
+  const { data } = await vendorApi.post<CanonicalBridgeResponse>(
+    "/v1/runtime/canonical/execute",
+    body,
+  );
+  return data;
+}
+
+// --- Partner Syntegris API (/v1/vendor/syntegris/*) ---
+// Vendor-scoped; sourceVendor derived from JWT. Do NOT send sourceVendor from client.
+
+/** GET /v1/vendor/syntegris/canonical/operations */
+export async function listPartnerSyntegrisCanonicalOperations(): Promise<{
+  items: CanonicalOperationItem[];
+}> {
+  const { data } = await vendorApi.get<{ items: CanonicalOperationItem[] }>(
+    "/v1/vendor/syntegris/canonical/operations",
+  );
+  return data;
+}
+
+/** GET /v1/vendor/syntegris/canonical/operations/{operationCode} */
+export async function getPartnerSyntegrisCanonicalOperation(
+  operationCode: string,
+  version?: string,
+): Promise<CanonicalOperationDetail> {
+  const params = version ? `?version=${encodeURIComponent(version)}` : "";
+  const { data } = await vendorApi.get<CanonicalOperationDetail>(
+    `/v1/vendor/syntegris/canonical/operations/${encodeURIComponent(operationCode)}${params}`,
+  );
+  return data;
+}
+
+/** POST /v1/vendor/syntegris/sandbox/request/validate */
+export async function validatePartnerSandboxRequest(body: {
+  operationCode: string;
+  version?: string;
+  payload: Record<string, unknown>;
+}): Promise<SandboxValidateResponse> {
+  const { data } = await vendorApi.post<SandboxValidateResponse>(
+    "/v1/vendor/syntegris/sandbox/request/validate",
+    body,
+  );
+  return data;
+}
+
+/** POST /v1/vendor/syntegris/sandbox/mock/run */
+export async function runPartnerMockSandboxTest(body: {
+  operationCode: string;
+  version?: string;
+  payload: Record<string, unknown>;
+  context?: Record<string, unknown>;
+}): Promise<SandboxMockRunResponse> {
+  const { data } = await vendorApi.post<SandboxMockRunResponse>(
+    "/v1/vendor/syntegris/sandbox/mock/run",
+    body,
+  );
+  return data;
+}
+
+/** POST /v1/vendor/syntegris/ai/debug/request/analyze */
+export async function analyzePartnerDebugRequest(body: {
+  operationCode: string;
+  version?: string;
+  payload: Record<string, unknown>;
+}): Promise<DebugReport> {
+  const { data } = await vendorApi.post<DebugReport>(
+    "/v1/vendor/syntegris/ai/debug/request/analyze",
+    body,
+  );
+  return data;
+}
+
+/** POST /v1/vendor/syntegris/ai/debug/flow-draft/analyze */
+export async function analyzePartnerDebugFlowDraft(body: {
+  draft: Record<string, unknown>;
+}): Promise<DebugReport> {
+  const { data } = await vendorApi.post<DebugReport>(
+    "/v1/vendor/syntegris/ai/debug/flow-draft/analyze",
+    body,
+  );
+  return data;
+}
+
+/** POST /v1/vendor/syntegris/ai/debug/sandbox-result/analyze */
+export async function analyzePartnerDebugSandboxResult(body: {
+  result: Record<string, unknown>;
+}): Promise<DebugReport> {
+  const { data } = await vendorApi.post<DebugReport>(
+    "/v1/vendor/syntegris/ai/debug/sandbox-result/analyze",
+    body,
+  );
+  return data;
+}
+
+/** Partner preflight payload - sourceVendor omitted; backend derives from JWT */
+export interface PartnerCanonicalPreflightPayload {
+  targetVendor: string;
+  envelope: {
+    operationCode: string;
+    version?: string;
+    direction: string;
+    correlationId?: string;
+    timestamp?: string;
+    context?: Record<string, unknown>;
+    payload: Record<string, unknown>;
+  };
+}
+
+/** POST /v1/vendor/syntegris/runtime/canonical/preflight */
+export async function runPartnerCanonicalPreflight(
+  body: PartnerCanonicalPreflightPayload,
+): Promise<CanonicalRuntimePreflightResponse> {
+  const { data } = await vendorApi.post<CanonicalRuntimePreflightResponse>(
+    "/v1/vendor/syntegris/runtime/canonical/preflight",
+    body,
+  );
+  return data;
+}
+
+/** Partner bridge payload - sourceVendor omitted; backend derives from JWT */
+export interface PartnerCanonicalBridgePayload {
+  targetVendor: string;
+  mode?: "DRY_RUN" | "EXECUTE";
+  envelope: {
+    operationCode: string;
+    version?: string;
+    direction: string;
+    correlationId?: string;
+    timestamp?: string;
+    context?: Record<string, unknown>;
+    payload: Record<string, unknown>;
+  };
+}
+
+/** POST /v1/vendor/syntegris/runtime/canonical/execute */
+export async function runPartnerCanonicalBridgeExecution(
+  body: PartnerCanonicalBridgePayload,
+): Promise<CanonicalBridgeResponse> {
+  const { data } = await vendorApi.post<CanonicalBridgeResponse>(
+    "/v1/vendor/syntegris/runtime/canonical/execute",
+    body,
+  );
+  return data;
+}
+
 export interface PolicyPreviewCheck {
   passed: boolean;
   reason: string;
@@ -1038,4 +1439,3 @@ export async function previewPolicy(
   );
   return data;
 }
-

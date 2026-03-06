@@ -4,11 +4,15 @@ import { PageLayout } from "frontend-shared";
 import {
   getMissionControlActivity,
   getMissionControlTopology,
+  getMissionControlTransaction,
+  listMissionControlTransactions,
 } from "../api/endpoints";
 import type {
   MissionControlActivityEvent,
   MissionControlEdge,
   MissionControlStage,
+  MissionControlTransactionDetail,
+  MissionControlTransactionSummary,
 } from "../types";
 
 const OVERLAY_WINDOW_MS = 8_000;
@@ -44,10 +48,86 @@ function stageLabel(stage: MissionControlStage): string {
   return "Error";
 }
 
+function TransactionDetailView({ detail }: { detail: MissionControlTransactionDetail }) {
+  return (
+    <div className="space-y-3 text-sm">
+      <div className="grid grid-cols-2 gap-2">
+        <span className="text-slate-500">Transaction ID</span>
+        <span className="font-mono text-xs">{detail.transactionId ?? "-"}</span>
+        <span className="text-slate-500">Operation</span>
+        <span>{detail.operationCode ?? "-"}</span>
+        <span className="text-slate-500">Source → Target</span>
+        <span>{detail.sourceVendor ?? "-"} → {detail.targetVendor ?? "-"}</span>
+        <span className="text-slate-500">Mode</span>
+        <span>{detail.mode ?? "-"}</span>
+        <span className="text-slate-500">Status</span>
+        <span>{detail.status ?? "-"}</span>
+        {detail.preflightStatus != null && (
+          <>
+            <span className="text-slate-500">Preflight Status</span>
+            <span>{detail.preflightStatus}</span>
+          </>
+        )}
+        <span className="text-slate-500">Canonical Version</span>
+        <span>{detail.canonicalVersion ?? "-"}</span>
+        <span className="text-slate-500">Correlation ID</span>
+        <span className="font-mono text-xs">{detail.correlationId ?? "-"}</span>
+      </div>
+      {detail.runtimeRequestPreview && Object.keys(detail.runtimeRequestPreview).length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-slate-600 mb-1">Runtime Request (metadata only)</p>
+          <pre className="text-xs bg-white border rounded p-2 overflow-x-auto max-h-24">
+            {JSON.stringify(detail.runtimeRequestPreview, null, 2)}
+          </pre>
+        </div>
+      )}
+      {detail.responseSummary && Object.keys(detail.responseSummary).length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-slate-600 mb-1">Response Summary (metadata only)</p>
+          <pre className="text-xs bg-white border rounded p-2 overflow-x-auto max-h-24">
+            {JSON.stringify(detail.responseSummary, null, 2)}
+          </pre>
+        </div>
+      )}
+      {detail.timeline && detail.timeline.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-slate-600 mb-1">Timeline</p>
+          <ul className="space-y-1 text-xs">
+            {detail.timeline.map((e, i) => (
+              <li key={i} className="border-l-2 border-slate-200 pl-2">
+                {e.timestamp ?? "-"} · {e.eventType} · {e.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {detail.notes && detail.notes.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-slate-600 mb-1">Notes</p>
+          <ul className="list-disc list-inside text-xs text-slate-600">
+            {detail.notes.map((n, i) => (
+              <li key={i}>{n}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function MissionControlPage() {
   const [operationFilter, setOperationFilter] = useState<string>("ALL");
   const [vendorFilter, setVendorFilter] = useState<string>("ALL");
   const [paused, setPaused] = useState(false);
+
+  const [txOperationCode, setTxOperationCode] = useState("");
+  const [txSourceVendor, setTxSourceVendor] = useState("");
+  const [txTargetVendor, setTxTargetVendor] = useState("");
+  const [txStatus, setTxStatus] = useState("");
+  const [txMode, setTxMode] = useState("");
+  const [txCorrelationId, setTxCorrelationId] = useState("");
+  const [txLimit, setTxLimit] = useState(50);
+  const [selectedTransactionId, setSelectedTransactionId] = useState<string | null>(null);
 
   const topologyQuery = useQuery({
     queryKey: ["mission-control", "topology"],
@@ -59,6 +139,31 @@ export function MissionControlPage() {
     queryKey: ["mission-control", "activity"],
     queryFn: () => getMissionControlActivity({ lookbackMinutes: 10, limit: 100 }),
     refetchInterval: paused ? false : 2_000,
+  });
+
+  const txFilters = useMemo(
+    () => ({
+      operationCode: txOperationCode.trim() || undefined,
+      sourceVendor: txSourceVendor.trim() || undefined,
+      targetVendor: txTargetVendor.trim() || undefined,
+      status: txStatus.trim() || undefined,
+      mode: txMode.trim() || undefined,
+      correlationId: txCorrelationId.trim() || undefined,
+      limit: txLimit,
+    }),
+    [txOperationCode, txSourceVendor, txTargetVendor, txStatus, txMode, txCorrelationId, txLimit]
+  );
+
+  const transactionsQuery = useQuery({
+    queryKey: ["mission-control", "transactions", txFilters],
+    queryFn: () => listMissionControlTransactions(txFilters),
+    enabled: true,
+  });
+
+  const detailQuery = useQuery({
+    queryKey: ["mission-control", "transaction", selectedTransactionId],
+    queryFn: () => getMissionControlTransaction(selectedTransactionId!),
+    enabled: !!selectedTransactionId,
   });
 
   const topology = topologyQuery.data ?? { nodes: [], edges: [] };
@@ -167,6 +272,9 @@ export function MissionControlPage() {
         </div>
       }
     >
+      <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+        Mission Control is metadata-only. Sensitive payloads are not exposed.
+      </div>
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <section className="xl:col-span-2 border border-slate-200 rounded-lg bg-white overflow-hidden">
           <header className="px-4 py-3 border-b border-slate-200 bg-slate-50">
@@ -240,7 +348,13 @@ export function MissionControlPage() {
               filteredEvents.map((event, index) => (
                 <article
                   key={`${event.ts ?? "no-ts"}-${event.transactionId ?? "no-tx"}-${event.stage}-${index}`}
-                  className={`rounded-lg border p-2 ${stageClasses(event.stage)}`}
+                  role={event.transactionId ? "button" : undefined}
+                  tabIndex={event.transactionId ? 0 : undefined}
+                  onClick={() => event.transactionId && setSelectedTransactionId(event.transactionId)}
+                  onKeyDown={(e) =>
+                    event.transactionId && (e.key === "Enter" || e.key === " ") && setSelectedTransactionId(event.transactionId)
+                  }
+                  className={`rounded-lg border p-2 ${stageClasses(event.stage)} ${event.transactionId ? "cursor-pointer hover:ring-1 hover:ring-slate-300" : ""}`}
                 >
                   <div className="text-[11px] font-semibold">{event.stage}</div>
                   <div className="text-xs mt-1">
@@ -260,6 +374,139 @@ export function MissionControlPage() {
           </div>
         </section>
       </div>
+
+      {/* Transactions - canonical runtime visibility */}
+      <section className="mt-6 border border-slate-200 rounded-lg bg-white overflow-hidden">
+        <header className="px-4 py-3 border-b border-slate-200 bg-slate-50">
+          <h2 className="text-sm font-semibold text-slate-900">Transactions</h2>
+          <p className="text-xs text-slate-600">
+            Canonical bridge/runtime transaction visibility. Read-only.
+          </p>
+        </header>
+        <div className="p-4 space-y-4">
+          {/* Filters row */}
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              placeholder="Operation"
+              value={txOperationCode}
+              onChange={(e) => setTxOperationCode(e.target.value)}
+              className="px-2 py-1.5 text-sm border border-slate-300 rounded w-40"
+            />
+            <input
+              type="text"
+              placeholder="Source vendor"
+              value={txSourceVendor}
+              onChange={(e) => setTxSourceVendor(e.target.value)}
+              className="px-2 py-1.5 text-sm border border-slate-300 rounded w-32"
+            />
+            <input
+              type="text"
+              placeholder="Target vendor"
+              value={txTargetVendor}
+              onChange={(e) => setTxTargetVendor(e.target.value)}
+              className="px-2 py-1.5 text-sm border border-slate-300 rounded w-32"
+            />
+            <input
+              type="text"
+              placeholder="Status"
+              value={txStatus}
+              onChange={(e) => setTxStatus(e.target.value)}
+              className="px-2 py-1.5 text-sm border border-slate-300 rounded w-24"
+            />
+            <select
+              value={txMode}
+              onChange={(e) => setTxMode(e.target.value)}
+              className="px-2 py-1.5 text-sm border border-slate-300 rounded bg-white w-28"
+            >
+              <option value="">All modes</option>
+              <option value="EXECUTE">EXECUTE</option>
+              <option value="DRY_RUN">DRY_RUN</option>
+            </select>
+            <input
+              type="text"
+              placeholder="Correlation ID"
+              value={txCorrelationId}
+              onChange={(e) => setTxCorrelationId(e.target.value)}
+              className="px-2 py-1.5 text-sm border border-slate-300 rounded w-36"
+            />
+            <input
+              type="number"
+              placeholder="Limit"
+              value={txLimit}
+              onChange={(e) => setTxLimit(Number(e.target.value) || 50)}
+              min={1}
+              max={200}
+              className="px-2 py-1.5 text-sm border border-slate-300 rounded w-20"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Transactions table */}
+            <div className="overflow-x-auto">
+              {transactionsQuery.isLoading ? (
+                <p className="text-sm text-slate-500">Loading transactions...</p>
+              ) : transactionsQuery.isError ? (
+                <p className="text-sm text-red-600">Error loading transactions.</p>
+              ) : !transactionsQuery.data?.items?.length ? (
+                <p className="text-sm text-slate-500">No transactions for current filters.</p>
+              ) : (
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50">
+                      <th className="text-left py-2 px-2">Transaction ID</th>
+                      <th className="text-left py-2 px-2">Operation</th>
+                      <th className="text-left py-2 px-2">Source</th>
+                      <th className="text-left py-2 px-2">Target</th>
+                      <th className="text-left py-2 px-2">Mode</th>
+                      <th className="text-left py-2 px-2">Status</th>
+                      <th className="text-left py-2 px-2">Correlation ID</th>
+                      <th className="text-left py-2 px-2">Created</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {transactionsQuery.data.items.map((tx: MissionControlTransactionSummary) => (
+                      <tr
+                        key={tx.transactionId ?? ""}
+                        onClick={() => setSelectedTransactionId(tx.transactionId ?? null)}
+                        className={`border-b border-slate-100 cursor-pointer hover:bg-slate-50 ${
+                          selectedTransactionId === tx.transactionId ? "bg-blue-50" : ""
+                        }`}
+                      >
+                        <td className="py-2 px-2 font-mono text-xs truncate max-w-[120px]" title={tx.transactionId ?? ""}>
+                          {tx.transactionId ?? "-"}
+                        </td>
+                        <td className="py-2 px-2">{tx.operationCode ?? "-"}</td>
+                        <td className="py-2 px-2">{tx.sourceVendor ?? "-"}</td>
+                        <td className="py-2 px-2">{tx.targetVendor ?? "-"}</td>
+                        <td className="py-2 px-2">{tx.mode ?? "-"}</td>
+                        <td className="py-2 px-2">{tx.status ?? "-"}</td>
+                        <td className="py-2 px-2 font-mono text-xs truncate max-w-[100px]" title={tx.correlationId ?? ""}>
+                          {tx.correlationId ?? "-"}
+                        </td>
+                        <td className="py-2 px-2 text-xs">{tx.createdAt ?? "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* Detail panel */}
+            <div className="border border-slate-200 rounded-lg p-4 bg-slate-50 min-h-[200px]">
+              {!selectedTransactionId ? (
+                <p className="text-sm text-slate-500">Select a transaction to view details.</p>
+              ) : detailQuery.isLoading ? (
+                <p className="text-sm text-slate-500">Loading detail...</p>
+              ) : detailQuery.isError ? (
+                <p className="text-sm text-red-600">Error loading transaction detail.</p>
+              ) : detailQuery.data ? (
+                <TransactionDetailView detail={detailQuery.data as MissionControlTransactionDetail} />
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </section>
     </PageLayout>
   );
 }

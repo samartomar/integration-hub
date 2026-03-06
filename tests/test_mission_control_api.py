@@ -137,3 +137,103 @@ def test_limit_clamp_enforced(mock_conn) -> None:
     policy_args = cur.execute.call_args_list[1][0][1]
     assert tx_args[1] <= 200
     assert policy_args[1] <= 200
+
+
+@patch("registry_lambda._get_connection")
+def test_transactions_list_returns_items(mock_conn) -> None:
+    cur = mock_conn.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+    cur.fetchall.return_value = [
+        {
+            "transaction_id": "tx-1",
+            "correlation_id": "corr-1",
+            "source_vendor": "LH001",
+            "target_vendor": "LH002",
+            "operation": "GET_VERIFY_MEMBER_ELIGIBILITY",
+            "status": "completed",
+            "created_at": "2026-03-05T12:00:00Z",
+            "request_body": None,
+            "canonical_request_body": None,
+            "parent_transaction_id": None,
+        },
+    ]
+
+    resp = handler(
+        _event("/v1/registry/mission-control/transactions", authorizer=JWT_ADMIN),
+        None,
+    )
+    assert resp["statusCode"] == 200
+    body = json.loads(resp["body"])
+    assert "items" in body
+    assert len(body["items"]) == 1
+    assert body["items"][0]["transactionId"] == "tx-1"
+    assert body["items"][0]["operationCode"] == "GET_VERIFY_MEMBER_ELIGIBILITY"
+
+
+@patch("registry_lambda._get_connection")
+def test_transactions_list_query_params_filter(mock_conn) -> None:
+    cur = mock_conn.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+    cur.fetchall.return_value = []
+
+    resp = handler(
+        _event(
+            "/v1/registry/mission-control/transactions",
+            query={"operationCode": "GET_ELIGIBILITY", "sourceVendor": "LH001", "limit": "25"},
+            authorizer=JWT_ADMIN,
+        ),
+        None,
+    )
+    assert resp["statusCode"] == 200
+    call_args = cur.execute.call_args[0][1]
+    assert "GET_ELIGIBILITY" in call_args
+    assert "LH001" in call_args
+
+
+@patch("registry_lambda._get_connection")
+def test_transactions_detail_returns_detail(mock_conn) -> None:
+    cur = mock_conn.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+    cur.fetchone.return_value = {
+        "transaction_id": "tx-1",
+        "correlation_id": "corr-1",
+        "source_vendor": "LH001",
+        "target_vendor": "LH002",
+        "operation": "GET_ELIGIBILITY",
+        "status": "completed",
+        "created_at": "2026-03-05T12:00:00Z",
+        "request_body": None,
+        "canonical_request_body": {"version": "1.0"},
+        "target_request_body": None,
+        "target_response_body": None,
+        "canonical_response_body": None,
+        "error_code": None,
+        "http_status": 200,
+        "failure_stage": None,
+        "parent_transaction_id": None,
+    }
+    cur.fetchall.return_value = []
+
+    resp = handler(
+        _event("/v1/registry/mission-control/transactions/tx-1", authorizer=JWT_ADMIN),
+        None,
+    )
+    assert resp["statusCode"] == 200
+    body = json.loads(resp["body"])
+    assert body["transactionId"] == "tx-1"
+    assert body["canonicalVersion"] == "1.0"
+    assert "timeline" in body
+    assert "notes" in body
+
+
+@patch("registry_lambda._get_connection")
+def test_transactions_detail_unknown_returns_404(mock_conn) -> None:
+    cur = mock_conn.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+    cur.fetchone.return_value = None
+
+    resp = handler(
+        _event("/v1/registry/mission-control/transactions/nonexistent-tx", authorizer=JWT_ADMIN),
+        None,
+    )
+    assert resp["statusCode"] == 404
+    body = json.loads(resp["body"])
+    assert body.get("error", {}).get("code") == "NOT_FOUND"
+
+

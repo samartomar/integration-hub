@@ -94,6 +94,35 @@ describe("MissionControlPage smoke", () => {
       count: 2,
       lookbackMinutes: 10,
     });
+    vi.mocked(endpointsApi.listMissionControlTransactions).mockResolvedValue({
+      items: [
+        {
+          transactionId: "tx-1",
+          sourceVendor: "LH001",
+          targetVendor: "LH002",
+          operationCode: "GET_VERIFY_MEMBER_ELIGIBILITY",
+          mode: "EXECUTE",
+          status: "completed",
+          correlationId: "corr-1",
+          createdAt: "2026-03-05T10:00:00Z",
+          summary: "Eligibility request executed.",
+        },
+      ],
+    });
+    vi.mocked(endpointsApi.getMissionControlTransaction).mockResolvedValue({
+      transactionId: "tx-1",
+      sourceVendor: "LH001",
+      targetVendor: "LH002",
+      operationCode: "GET_VERIFY_MEMBER_ELIGIBILITY",
+      mode: "EXECUTE",
+      status: "completed",
+      correlationId: "corr-1",
+      createdAt: "2026-03-05T10:00:00Z",
+      summary: "Eligibility request executed.",
+      canonicalVersion: "1.0",
+      timeline: [{ timestamp: "2026-03-05T10:00:00Z", eventType: "ROUTE_START", status: "INFO", message: "Started" }],
+      notes: ["Mission Control is read-only."],
+    });
   });
 
   afterEach(() => {
@@ -163,5 +192,42 @@ describe("MissionControlPage smoke", () => {
       expect(within(activitySection).getByText(/verifyMember/)).toBeInTheDocument();
       expect(within(activitySection).queryByText(/checkCoverage/)).not.toBeInTheDocument();
     });
+  });
+
+  it("transactions list loads", async () => {
+    renderPage();
+    await waitFor(() => {
+      expect(endpointsApi.listMissionControlTransactions).toHaveBeenCalled();
+    });
+    const txSection = screen.getByRole("heading", { name: "Transactions" }).closest("section");
+    expect(txSection).toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(txSection!).getByText("GET_VERIFY_MEMBER_ELIGIBILITY")).toBeInTheDocument();
+      expect(within(txSection!).getByText("tx-1")).toBeInTheDocument();
+    });
+  });
+
+  it("selecting a transaction shows detail", async () => {
+    renderPage();
+    await waitFor(() => {
+      expect(endpointsApi.listMissionControlTransactions).toHaveBeenCalled();
+    });
+    const txSection = screen.getByRole("heading", { name: "Transactions" }).closest("section");
+    const txCell = await within(txSection!).findByText("tx-1");
+    await userEvent.setup().click(txCell);
+    await waitFor(() => {
+      expect(endpointsApi.getMissionControlTransaction).toHaveBeenCalledWith("tx-1");
+    });
+    expect(await screen.findByText(/1\.0/)).toBeInTheDocument();
+    expect(screen.getByText(/ROUTE_START/)).toBeInTheDocument();
+  });
+
+  it("empty transactions state renders when no items", async () => {
+    vi.mocked(endpointsApi.listMissionControlTransactions).mockResolvedValue({ items: [] });
+    renderPage();
+    await waitFor(() => {
+      expect(endpointsApi.listMissionControlTransactions).toHaveBeenCalled();
+    });
+    expect(await screen.findByText(/No transactions for current filters/)).toBeInTheDocument();
   });
 });

@@ -12,6 +12,12 @@ import { JourneyModePage } from "./pages/JourneyModePage.tsx";
 import { PolicyDecisionViewerPage } from "./pages/PolicyDecisionViewerPage.tsx";
 import { PolicySimulatorPage } from "./pages/PolicySimulatorPage.tsx";
 import { MissionControlPage } from "./pages/MissionControlPage.tsx";
+import { CanonicalExplorerPage } from "./pages/CanonicalExplorerPage.tsx";
+import { FlowBuilderPage } from "./pages/FlowBuilderPage.tsx";
+import { SandboxPage } from "./pages/SandboxPage.tsx";
+import { AIDebuggerPage } from "./pages/AIDebuggerPage.tsx";
+import { RuntimePreflightPage } from "./pages/RuntimePreflightPage.tsx";
+import { CanonicalExecutePage } from "./pages/CanonicalExecutePage.tsx";
 import { FeatureRoute } from "./features/FeatureFlagContext.tsx";
 
 function LegacyTransactionRedirect() {
@@ -64,6 +70,12 @@ export const router = createBrowserRouter([
         element: <FeatureRoute featureCode="audit_view"><TransactionDetailPage /></FeatureRoute>,
       },
       { path: "/admin/registry", element: <FeatureRoute featureCode="registry_basic"><RegistryPage /></FeatureRoute> },
+      { path: "/admin/canonical", element: <FeatureRoute featureCode="registry_basic"><CanonicalExplorerPage /></FeatureRoute> },
+      { path: "/admin/flow-builder", element: <FeatureRoute featureCode="registry_basic"><FlowBuilderPage /></FeatureRoute> },
+      { path: "/admin/sandbox", element: <FeatureRoute featureCode="registry_basic"><SandboxPage /></FeatureRoute> },
+      { path: "/admin/ai-debugger", element: <FeatureRoute featureCode="registry_basic"><AIDebuggerPage /></FeatureRoute> },
+      { path: "/admin/runtime-preflight", element: <FeatureRoute featureCode="registry_basic"><RuntimePreflightPage /></FeatureRoute> },
+      { path: "/admin/canonical-execute", element: <FeatureRoute featureCode="registry_basic"><CanonicalExecutePage /></FeatureRoute> },
       { path: "/admin/approvals", element: <FeatureRoute featureCode="approvals"><Navigate to="/admin/registry?tab=access-requests" replace /></FeatureRoute> },
       {
         path: "/admin/registry/vendors/:vendorCode",

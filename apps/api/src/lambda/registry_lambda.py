@@ -2,6 +2,14 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# Ensure schema package is importable (canonical_registry)
+_src_dir = Path(__file__).resolve().parent.parent
+if str(_src_dir) not in sys.path:
+    sys.path.insert(0, str(_src_dir))
+
 import base64
 import binascii
 import hashlib
@@ -35,6 +43,11 @@ from policy_engine import PolicyContext, evaluate_policy
 from psycopg2 import sql
 from psycopg2.extras import RealDictCursor
 from readiness_mapping import is_mapping_configured_for_direction
+
+from audit.mission_control_service import (
+    get_mission_control_transaction,
+    list_mission_control_transactions,
+)
 
 # operation_code: uppercase alphanumeric with underscores (e.g. SEND_RECEIPT)
 OPERATION_CODE_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]{1,63}$")
@@ -1549,7 +1562,7 @@ def _handle_post_contracts(event: dict[str, Any]) -> dict[str, Any]:
 
 
 def _parse_body(raw: str | dict[str, Any] | None) -> dict[str, Any]:
-    """Parse request body to dict."""
+    """Parse request body to dict. Returns {} on JSONDecodeError."""
     if raw is None:
         return {}
     if isinstance(raw, dict):
@@ -1558,6 +1571,17 @@ def _parse_body(raw: str | dict[str, Any] | None) -> dict[str, Any]:
         return json.loads(raw) if raw else {}
     except json.JSONDecodeError:
         return {}
+
+
+def _parse_body_strict(raw: str | dict[str, Any] | None) -> dict[str, Any]:
+    """Parse request body to dict. Raises json.JSONDecodeError on malformed JSON."""
+    if raw is None:
+        return {}
+    if isinstance(raw, dict):
+        return raw
+    if not raw:
+        return {}
+    return json.loads(raw)
 
 
 def _normalize_event(event: dict[str, Any]) -> None:
@@ -1998,6 +2022,330 @@ def _handle_get_operations(event: dict[str, Any]) -> dict[str, Any]:
         return _error(400, "VALIDATION_ERROR", str(e))
     except ConnectionError as e:
         return _error(503, "DB_ERROR", str(e))
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_get_canonical_operations(_event: dict[str, Any]) -> dict[str, Any]:
+    """GET /v1/registry/canonical/operations - list canonical operations from schema registry."""
+    try:
+        from schema.canonical_registry import list_operations
+
+        items = list_operations()
+        return _success(200, {"items": items})
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_get_canonical_operation(event: dict[str, Any], operation_code: str | None) -> dict[str, Any]:
+    """GET /v1/registry/canonical/operations/{operationCode} - operation details with schemas and examples."""
+    if not operation_code or not str(operation_code).strip():
+        return _error(400, "VALIDATION_ERROR", "operationCode is required")
+    try:
+        from schema.canonical_registry import get_operation
+
+        qp = _parse_query_params(event)
+        version = (qp.get("version") or "").strip() or None
+        op = get_operation(operation_code, version)
+        if op is None:
+            return _error(404, "NOT_FOUND", f"Canonical operation '{operation_code}' not found")
+        return _success(200, op)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_post_flow_draft_validate(event: dict[str, Any]) -> dict[str, Any]:
+    """POST /v1/flow/draft/validate - validate draft flow payload (read-only, no persistence)."""
+    try:
+        from schema.flow_draft_schema import validate_flow_draft, normalize_flow_draft, FlowDraftValidationError
+
+        body = _parse_body(event.get("body"))
+        if not isinstance(body, dict):
+            return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+        try:
+            validate_flow_draft(body)
+            normalized = normalize_flow_draft(body)
+            return _success(200, {"valid": True, "normalizedDraft": normalized})
+        except FlowDraftValidationError as e:
+            err_item = {"message": str(e.message), "field": e.field}
+            return _success(200, {"valid": False, "errors": [err_item]})
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_get_sandbox_operations(_event: dict[str, Any]) -> dict[str, Any]:
+    """GET /v1/sandbox/canonical/operations - list canonical operations for sandbox."""
+    try:
+        from schema.sandbox_runner import list_sandbox_operations
+
+        items = list_sandbox_operations()
+        return _success(200, {"items": items})
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_get_sandbox_operation(event: dict[str, Any], operation_code: str | None) -> dict[str, Any]:
+    """GET /v1/sandbox/canonical/operations/{operationCode} - operation details for sandbox."""
+    if not operation_code or not str(operation_code).strip():
+        return _error(400, "VALIDATION_ERROR", "operationCode is required")
+    try:
+        from schema.sandbox_runner import get_sandbox_operation
+
+        qp = _parse_query_params(event)
+        version = (qp.get("version") or "").strip() or None
+        op = get_sandbox_operation(operation_code, version)
+        if op is None:
+            return _error(404, "NOT_FOUND", f"Canonical operation '{operation_code}' not found")
+        return _success(200, op)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_post_sandbox_request_validate(event: dict[str, Any]) -> dict[str, Any]:
+    """POST /v1/sandbox/request/validate - validate request payload against canonical schema."""
+    try:
+        from schema.sandbox_runner import validate_sandbox_request
+
+        body = _parse_body(event.get("body"))
+        if not isinstance(body, dict):
+            return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+        operation_code = (body.get("operationCode") or body.get("operation_code") or "").strip()
+        if not operation_code:
+            return _error(400, "VALIDATION_ERROR", "operationCode is required")
+        version = (body.get("version") or "").strip() or None
+        payload = body.get("payload")
+        if not isinstance(payload, dict):
+            return _error(400, "VALIDATION_ERROR", "payload must be a JSON object")
+        try:
+            validate_sandbox_request(operation_code, payload, version)
+            from schema.canonical_registry import resolve_version
+
+            resolved = resolve_version(operation_code.upper(), version) or (version or "1.0")
+            return _success(200, {"valid": True, "errors": [], "normalizedVersion": resolved})
+        except Exception as e:
+            import jsonschema
+
+            if isinstance(e, jsonschema.ValidationError):
+                path_str = ".".join(str(p) for p in e.path) if e.path else "payload"
+                err_item = {"field": path_str, "message": str(e.message)}
+                return _success(200, {"valid": False, "errors": [err_item]})
+            raise
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_post_sandbox_mock_run(event: dict[str, Any]) -> dict[str, Any]:
+    """POST /v1/sandbox/mock/run - run mock sandbox test (no real execution)."""
+    try:
+        from schema.sandbox_runner import run_mock_sandbox_test
+
+        body = _parse_body(event.get("body"))
+        if not isinstance(body, dict):
+            return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+        operation_code = (body.get("operationCode") or body.get("operation_code") or "").strip()
+        if not operation_code:
+            return _error(400, "VALIDATION_ERROR", "operationCode is required")
+        payload = body.get("payload")
+        if not isinstance(payload, dict):
+            return _error(400, "VALIDATION_ERROR", "payload must be a JSON object")
+        version = (body.get("version") or "").strip() or None
+        context = body.get("context")
+        if context is not None and not isinstance(context, dict):
+            context = {}
+        result = run_mock_sandbox_test(
+            operation_code,
+            payload,
+            version=version,
+            context=context or {},
+        )
+        return _success(200, result)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_post_ai_debug_request_analyze(event: dict[str, Any]) -> dict[str, Any]:
+    """POST /v1/ai/debug/request/analyze - analyze canonical request payload (deterministic)."""
+    try:
+        from ai.integration_debugger import analyze_canonical_request
+
+        body = _parse_body(event.get("body"))
+        if not isinstance(body, dict):
+            return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+        operation_code = (body.get("operationCode") or body.get("operation_code") or "").strip()
+        if not operation_code:
+            return _error(400, "VALIDATION_ERROR", "operationCode is required")
+        payload = body.get("payload")
+        if not isinstance(payload, dict):
+            return _error(400, "VALIDATION_ERROR", "payload must be a JSON object")
+        version = (body.get("version") or "").strip() or None
+        report = analyze_canonical_request(operation_code, payload, version)
+        return _success(200, report)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_post_ai_debug_flow_draft_analyze(event: dict[str, Any]) -> dict[str, Any]:
+    """POST /v1/ai/debug/flow-draft/analyze - analyze flow draft (deterministic)."""
+    try:
+        from ai.integration_debugger import analyze_flow_draft
+
+        body = _parse_body(event.get("body"))
+        if not isinstance(body, dict):
+            return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+        draft = body.get("draft")
+        if draft is None and "operationCode" in body:
+            draft = body
+        if not isinstance(draft, dict):
+            return _error(400, "VALIDATION_ERROR", "draft must be a JSON object")
+        report = analyze_flow_draft(draft)
+        return _success(200, report)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_post_ai_debug_sandbox_result_analyze(event: dict[str, Any]) -> dict[str, Any]:
+    """POST /v1/ai/debug/sandbox-result/analyze - analyze sandbox result (deterministic)."""
+    try:
+        from ai.integration_debugger import analyze_sandbox_result
+
+        body = _parse_body(event.get("body"))
+        if not isinstance(body, dict):
+            return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+        result = body.get("result")
+        if result is None and "operationCode" in body:
+            result = body
+        if not isinstance(result, dict):
+            return _error(400, "VALIDATION_ERROR", "result must be a JSON object")
+        report = analyze_sandbox_result(result)
+        return _success(200, report)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _check_allowlist_for_preflight(
+    conn: Any, source_vendor: str, target_vendor: str, operation_code: str
+) -> bool:
+    """Check if (source, target, operation) has an allowlist rule for OUTBOUND or BOTH."""
+    if not source_vendor or not target_vendor or not operation_code:
+        return False
+    row = _execute_one(
+        conn,
+        sql.SQL(
+            """
+            SELECT 1 FROM control_plane.vendor_operation_allowlist
+            WHERE source_vendor_code = %s AND target_vendor_code = %s AND operation_code = %s
+              AND COALESCE(rule_scope, 'admin') = 'admin'
+              AND (UPPER(COALESCE(flow_direction, 'BOTH')) IN ('OUTBOUND', 'BOTH'))
+            LIMIT 1
+            """
+        ),
+        (source_vendor.strip().upper(), target_vendor.strip().upper(), operation_code.strip().upper()),
+    )
+    return row is not None
+
+
+def _handle_post_runtime_canonical_preflight(event: dict[str, Any]) -> dict[str, Any]:
+    """POST /v1/runtime/canonical/preflight - validate and resolve runtime prerequisites (no execution)."""
+    try:
+        from schema.canonical_runtime_preflight import run_canonical_preflight
+
+        try:
+            body = _parse_body_strict(event.get("body"))
+        except json.JSONDecodeError as e:
+            return _error(400, "INVALID_JSON", f"Malformed JSON body: {e}")
+        if not isinstance(body, dict):
+            return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+        source = (body.get("sourceVendor") or body.get("source_vendor") or "").strip()
+        target = (body.get("targetVendor") or body.get("target_vendor") or "").strip()
+        envelope = body.get("envelope")
+        op_code = ""
+        if isinstance(envelope, dict):
+            op_code = (envelope.get("operationCode") or envelope.get("operation_code") or "").strip().upper()
+        allowlist_ok: bool | None = None
+        try:
+            with _get_connection() as conn:
+                if source and target and op_code:
+                    allowlist_ok = _check_allowlist_for_preflight(conn, source, target, op_code)
+        except Exception:
+            pass
+        result = run_canonical_preflight(body, allowlist_ok=allowlist_ok)
+        return _success(200, result)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_post_runtime_canonical_execute(event: dict[str, Any]) -> dict[str, Any]:
+    """POST /v1/runtime/canonical/execute - bridge canonical request to runtime execute."""
+    try:
+        from schema.canonical_runtime_bridge import run_canonical_bridge
+
+        try:
+            body = _parse_body_strict(event.get("body"))
+        except json.JSONDecodeError as e:
+            return _error(400, "INVALID_JSON", f"Malformed JSON body: {e}")
+        if not isinstance(body, dict):
+            return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+
+        source = (body.get("sourceVendor") or body.get("source_vendor") or "").strip()
+        op_code = ""
+        envelope = body.get("envelope")
+        if isinstance(envelope, dict):
+            op_code = (envelope.get("operationCode") or envelope.get("operation_code") or "").strip().upper()
+
+        allowlist_ok: bool | None = None
+        target = (body.get("targetVendor") or body.get("target_vendor") or "").strip()
+        try:
+            with _get_connection() as conn:
+                if source and target and op_code:
+                    allowlist_ok = _check_allowlist_for_preflight(conn, source, target, op_code)
+        except Exception:
+            pass
+
+        def executor(execute_request: dict[str, Any]) -> dict[str, Any]:
+            """Build /v1/execute event and invoke routing_lambda.handler."""
+            from routing_lambda import handler as routing_handler
+
+            req_ctx = event.get("requestContext") or {}
+            auth = req_ctx.get("authorizer") or {}
+            jwt_claims = auth.get("jwt", {}).get("claims", {}) if isinstance(auth.get("jwt"), dict) else {}
+            if not isinstance(jwt_claims, dict):
+                jwt_claims = {}
+            claims_for_execute = dict(jwt_claims)
+            claims_for_execute["bcpAuth"] = source
+            if "aud" not in claims_for_execute and "audience" not in claims_for_execute:
+                claims_for_execute["aud"] = os.environ.get("RUNTIME_API_AUDIENCE") or os.environ.get("IDP_AUDIENCE") or "api://default"
+
+            execute_body = {
+                "targetVendor": execute_request.get("targetVendor"),
+                "operation": execute_request.get("operation"),
+                "parameters": execute_request.get("parameters") or {},
+            }
+            if execute_request.get("idempotencyKey"):
+                execute_body["idempotencyKey"] = execute_request["idempotencyKey"]
+
+            execute_event = {
+                "path": "/v1/execute",
+                "rawPath": "/v1/execute",
+                "httpMethod": "POST",
+                "headers": {"content-type": "application/json"},
+                "body": json.dumps(execute_body),
+                "queryStringParameters": {},
+                "pathParameters": {},
+                "requestContext": {
+                    "requestId": req_ctx.get("requestId") or str(uuid.uuid4()),
+                    "http": {"method": "POST", "path": "/v1/execute"},
+                    "authorizer": {
+                        "principalId": source,
+                        "vendor_code": source,
+                        "jwt": {"claims": claims_for_execute},
+                    },
+                },
+                "isBase64Encoded": False,
+            }
+            return routing_handler(execute_event, None)
+
+        result = run_canonical_bridge(body, executor=executor, allowlist_ok=allowlist_ok)
+        return _success(200, result)
     except Exception as e:
         return _error(500, "INTERNAL_ERROR", str(e))
 
@@ -3410,6 +3758,50 @@ def _handle_get_mission_control_activity(event: dict[str, Any]) -> dict[str, Any
         return _error(500, "INTERNAL_ERROR", str(e))
 
 
+def _handle_get_mission_control_transactions(event: dict[str, Any]) -> dict[str, Any]:
+    """GET /v1/registry/mission-control/transactions (admin-only, read-only)."""
+    try:
+        qp = _parse_query_params(event)
+        limit = validate_limit(qp.get("limit"), default=50, minimum=1, maximum=200)
+        filters: dict[str, Any] = {"lookbackMinutes": validate_limit(qp.get("lookbackminutes"), default=60, minimum=1, maximum=1440)}
+        for key, qp_key in [
+            ("operationCode", "operationcode"),
+            ("sourceVendor", "sourcevendor"),
+            ("targetVendor", "targetvendor"),
+            ("status", "status"),
+            ("mode", "mode"),
+            ("correlationId", "correlationid"),
+        ]:
+            val = (qp.get(qp_key) or "").strip()
+            if val:
+                filters[key] = val
+        with _get_connection() as conn:
+            items = list_mission_control_transactions(conn, filters=filters, limit=limit)
+        return _success(200, {"items": items})
+    except ValueError as e:
+        return _error(400, "VALIDATION_ERROR", str(e))
+    except ConnectionError as e:
+        return _error(503, "DB_ERROR", str(e))
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_get_mission_control_transaction(event: dict[str, Any], transaction_id: str) -> dict[str, Any]:
+    """GET /v1/registry/mission-control/transactions/{transactionId} (admin-only, read-only)."""
+    if not transaction_id or not str(transaction_id).strip():
+        return _error(400, "VALIDATION_ERROR", "transactionId is required")
+    try:
+        with _get_connection() as conn:
+            detail = get_mission_control_transaction(conn, str(transaction_id).strip())
+        if detail is None:
+            return _error(404, "NOT_FOUND", f"Transaction {transaction_id} not found")
+        return _success(200, detail)
+    except ConnectionError as e:
+        return _error(503, "DB_ERROR", str(e))
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
 def _list_policy_decisions(
     conn: Any,
     *,
@@ -4107,6 +4499,212 @@ def _handler_impl(event: dict[str, Any], context: object) -> dict[str, Any]:
         if not decision.allow:
             return add_cors_to_response(policy_denied_response(decision))
 
+    # Require JWT authorizer for all /v1/flow/* GET and POST
+    if len(segments) >= 2 and segments[:2] == ["v1", "flow"]:
+        auth_err = require_admin_secret(event)
+        is_admin = auth_err is None
+        if auth_err is not None:
+            return add_cors_to_response(auth_err)
+        decision = evaluate_policy(
+            PolicyContext(
+                surface="ADMIN",
+                action="REGISTRY_READ" if event.get("httpMethod") == "GET" else "REGISTRY_WRITE",
+                vendor_code="ADMIN" if is_admin else None,
+                target_vendor_code=None,
+                operation_code=None,
+                requested_source_vendor_code=None,
+                is_admin=is_admin,
+                groups=[],
+                query={},
+            )
+        )
+        if not decision.allow:
+            return add_cors_to_response(policy_denied_response(decision))
+
+    # GET /v1/flow/canonical/operations - list canonical operations (Flow Builder)
+    if (
+        len(segments) == 4
+        and segments[:4] == ["v1", "flow", "canonical", "operations"]
+        and event.get("httpMethod") == "GET"
+    ):
+        return _handle_get_canonical_operations(event)
+
+    # GET /v1/flow/canonical/operations/{operationCode} - operation details (Flow Builder)
+    if (
+        len(segments) == 5
+        and segments[:4] == ["v1", "flow", "canonical", "operations"]
+        and event.get("httpMethod") == "GET"
+    ):
+        operation_code = segments[4] or (event.get("pathParameters") or {}).get("operationCode")
+        return _handle_get_canonical_operation(event, operation_code)
+
+    # POST /v1/flow/draft/validate - validate flow draft (read-only)
+    if (
+        len(segments) == 4
+        and segments[:4] == ["v1", "flow", "draft", "validate"]
+        and event.get("httpMethod") == "POST"
+    ):
+        return _handle_post_flow_draft_validate(event)
+
+    # Require JWT authorizer for POST /v1/runtime/canonical/preflight (admin control-plane)
+    if (
+        len(segments) == 4
+        and segments[:4] == ["v1", "runtime", "canonical", "preflight"]
+        and event.get("httpMethod") == "POST"
+    ):
+        auth_err = require_admin_secret(event)
+        if auth_err is not None:
+            return add_cors_to_response(auth_err)
+        decision = evaluate_policy(
+            PolicyContext(
+                surface="ADMIN",
+                action="REGISTRY_READ",
+                vendor_code="ADMIN",
+                target_vendor_code=None,
+                operation_code=None,
+                requested_source_vendor_code=None,
+                is_admin=True,
+                groups=[],
+                query={},
+            )
+        )
+        if not decision.allow:
+            return add_cors_to_response(policy_denied_response(decision))
+        return _handle_post_runtime_canonical_preflight(event)
+
+    # Require JWT authorizer for POST /v1/runtime/canonical/execute (admin control-plane)
+    if (
+        len(segments) == 4
+        and segments[:4] == ["v1", "runtime", "canonical", "execute"]
+        and event.get("httpMethod") == "POST"
+    ):
+        auth_err = require_admin_secret(event)
+        if auth_err is not None:
+            return add_cors_to_response(auth_err)
+        decision = evaluate_policy(
+            PolicyContext(
+                surface="ADMIN",
+                action="REGISTRY_READ",
+                vendor_code="ADMIN",
+                target_vendor_code=None,
+                operation_code=None,
+                requested_source_vendor_code=None,
+                is_admin=True,
+                groups=[],
+                query={},
+            )
+        )
+        if not decision.allow:
+            return add_cors_to_response(policy_denied_response(decision))
+        return _handle_post_runtime_canonical_execute(event)
+
+    # Require JWT authorizer for all /v1/ai/debug/* POST
+    if len(segments) >= 3 and segments[:3] == ["v1", "ai", "debug"]:
+        auth_err = require_admin_secret(event)
+        is_admin = auth_err is None
+        if auth_err is not None:
+            return add_cors_to_response(auth_err)
+        decision = evaluate_policy(
+            PolicyContext(
+                surface="ADMIN",
+                action="REGISTRY_READ" if event.get("httpMethod") == "GET" else "REGISTRY_WRITE",
+                vendor_code="ADMIN" if is_admin else None,
+                target_vendor_code=None,
+                operation_code=None,
+                requested_source_vendor_code=None,
+                is_admin=is_admin,
+                groups=[],
+                query={},
+            )
+        )
+        if not decision.allow:
+            return add_cors_to_response(policy_denied_response(decision))
+
+    # POST /v1/ai/debug/request/analyze - analyze canonical request
+    if (
+        len(segments) == 5
+        and segments[:3] == ["v1", "ai", "debug"]
+        and segments[3] == "request"
+        and segments[4] == "analyze"
+        and event.get("httpMethod") == "POST"
+    ):
+        return _handle_post_ai_debug_request_analyze(event)
+
+    # POST /v1/ai/debug/flow-draft/analyze - analyze flow draft
+    if (
+        len(segments) == 5
+        and segments[:3] == ["v1", "ai", "debug"]
+        and segments[3] == "flow-draft"
+        and segments[4] == "analyze"
+        and event.get("httpMethod") == "POST"
+    ):
+        return _handle_post_ai_debug_flow_draft_analyze(event)
+
+    # POST /v1/ai/debug/sandbox-result/analyze - analyze sandbox result
+    if (
+        len(segments) == 5
+        and segments[:3] == ["v1", "ai", "debug"]
+        and segments[3] == "sandbox-result"
+        and segments[4] == "analyze"
+        and event.get("httpMethod") == "POST"
+    ):
+        return _handle_post_ai_debug_sandbox_result_analyze(event)
+
+    # Require JWT authorizer for all /v1/sandbox/* GET and POST
+    if len(segments) >= 2 and segments[:2] == ["v1", "sandbox"]:
+        auth_err = require_admin_secret(event)
+        is_admin = auth_err is None
+        if auth_err is not None:
+            return add_cors_to_response(auth_err)
+        decision = evaluate_policy(
+            PolicyContext(
+                surface="ADMIN",
+                action="REGISTRY_READ" if event.get("httpMethod") == "GET" else "REGISTRY_WRITE",
+                vendor_code="ADMIN" if is_admin else None,
+                target_vendor_code=None,
+                operation_code=None,
+                requested_source_vendor_code=None,
+                is_admin=is_admin,
+                groups=[],
+                query={},
+            )
+        )
+        if not decision.allow:
+            return add_cors_to_response(policy_denied_response(decision))
+
+    # GET /v1/sandbox/canonical/operations - list canonical operations (Sandbox)
+    if (
+        len(segments) == 4
+        and segments[:4] == ["v1", "sandbox", "canonical", "operations"]
+        and event.get("httpMethod") == "GET"
+    ):
+        return _handle_get_sandbox_operations(event)
+
+    # GET /v1/sandbox/canonical/operations/{operationCode} - operation details (Sandbox)
+    if (
+        len(segments) == 5
+        and segments[:4] == ["v1", "sandbox", "canonical", "operations"]
+        and event.get("httpMethod") == "GET"
+    ):
+        operation_code = segments[4] or (event.get("pathParameters") or {}).get("operationCode")
+        return _handle_get_sandbox_operation(event, operation_code)
+
+    # POST /v1/sandbox/request/validate - validate request payload
+    if (
+        len(segments) == 4
+        and segments[:4] == ["v1", "sandbox", "request", "validate"]
+        and event.get("httpMethod") == "POST"
+    ):
+        return _handle_post_sandbox_request_validate(event)
+
+    # POST /v1/sandbox/mock/run - run mock sandbox test
+    if (
+        len(segments) == 4
+        and segments[:4] == ["v1", "sandbox", "mock", "run"]
+        and event.get("httpMethod") == "POST"
+    ):
+        return _handle_post_sandbox_mock_run(event)
+
     # POST /v1/registry/readiness/batch - batch readiness for multiple vendors
     if (
         len(segments) == 4
@@ -4118,6 +4716,23 @@ def _handler_impl(event: dict[str, Any], context: object) -> dict[str, Any]:
     # GET /v1/registry/readiness - vendor readiness report
     if segments == ["v1", "registry", "readiness"] and event.get("httpMethod") == "GET":
         return _handle_get_readiness(event)
+
+    # GET /v1/registry/canonical/operations - list canonical operations
+    if (
+        len(segments) == 4
+        and segments[:4] == ["v1", "registry", "canonical", "operations"]
+        and event.get("httpMethod") == "GET"
+    ):
+        return _handle_get_canonical_operations(event)
+
+    # GET /v1/registry/canonical/operations/{operationCode} - operation details
+    if (
+        len(segments) == 5
+        and segments[:4] == ["v1", "registry", "canonical", "operations"]
+        and event.get("httpMethod") == "GET"
+    ):
+        operation_code = segments[4] or (event.get("pathParameters") or {}).get("operationCode")
+        return _handle_get_canonical_operation(event, operation_code)
 
     # GET /v1/registry/contracts - list with optional filters
     if segments == ["v1", "registry", "contracts"] and event.get("httpMethod") == "GET":
@@ -4156,6 +4771,19 @@ def _handler_impl(event: dict[str, Any], context: object) -> dict[str, Any]:
     # GET /v1/registry/mission-control/activity - recent execute + policy deny metadata
     if segments == ["v1", "registry", "mission-control", "activity"] and event.get("httpMethod") == "GET":
         return _handle_get_mission_control_activity(event)
+
+    # GET /v1/registry/mission-control/transactions - canonical runtime transaction list
+    if segments == ["v1", "registry", "mission-control", "transactions"] and event.get("httpMethod") == "GET":
+        return _handle_get_mission_control_transactions(event)
+
+    # GET /v1/registry/mission-control/transactions/{transactionId} - transaction detail
+    if (
+        len(segments) == 5
+        and segments[:4] == ["v1", "registry", "mission-control", "transactions"]
+        and event.get("httpMethod") == "GET"
+    ):
+        transaction_id = segments[4] or (event.get("pathParameters") or {}).get("transactionId")
+        return _handle_get_mission_control_transaction(event, transaction_id or "")
 
     # GET /v1/registry/policy-decisions - policy observability stream (admin)
     if segments == ["v1", "registry", "policy-decisions"] and event.get("httpMethod") == "GET":

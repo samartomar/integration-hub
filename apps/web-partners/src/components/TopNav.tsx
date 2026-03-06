@@ -6,6 +6,7 @@ import { useFeature } from "../features/FeatureFlagContext";
 
 const configPaths = [
   "/configuration",
+  "/configuration/access",
   "/configuration/allowlist",
   "/configuration/auth-profiles",
   "/configuration/endpoints",
@@ -13,6 +14,7 @@ const configPaths = [
 ];
 const isFlowsPath = (path: string) =>
   path === "/flows" || (path.startsWith("/flows/") && path.length > 7);
+const isFlowJourneyPath = (path: string) => path === "/flow";
 const operationsPaths = ["/transactions"];
 
 interface TopNavProps {
@@ -87,13 +89,23 @@ export function TopNav({ mobile, onSettingsClick }: TopNavProps = {}) {
         ))}
       {featureFlowBuilder &&
         (hasVendorKey ? (
-          <NavLink to="/flows" className={() => navLinkClass(isFlowsActive)}>
-            Flows
-          </NavLink>
+          <>
+            <NavLink to="/flow" className={() => navLinkClass(isFlowJourneyPath(location.pathname))}>
+              Flow
+            </NavLink>
+            <NavLink to="/flows" className={() => navLinkClass(isFlowsActive)}>
+              Flows
+            </NavLink>
+          </>
         ) : (
-          <span className={disabledClass} title="Select active licensee first">
-            Flows
-          </span>
+          <>
+            <span className={disabledClass} title="Select active licensee first">
+              Flow
+            </span>
+            <span className={disabledClass} title="Select active licensee first">
+              Flows
+            </span>
+          </>
         ))}
       {featureRegistryBasic &&
         (hasVendorKey ? (

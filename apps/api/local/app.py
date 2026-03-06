@@ -137,6 +137,16 @@ async def ai_execute(request: Request) -> Response:
     return _invoke_sync(_get_ai_handler(), event)
 
 
+@app.api_route("/v1/ai/debug/{path:path}", methods=["GET", "POST", "OPTIONS"])
+async def ai_debug_api(request: Request, path: str) -> Response:
+    """AI Debugger: /v1/ai/debug/* (JWT). Deterministic integration debugger."""
+    if request.method == "OPTIONS":
+        return Response(status_code=200)
+    full_path = f"/v1/ai/debug/{path}" if path else "/v1/ai/debug"
+    event = await _build_event(request, full_path)
+    return _invoke_sync(_get_registry_handler(), event)
+
+
 @app.api_route("/v1/vendor/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 async def vendor_api(request: Request, path: str) -> Response:   
     if request.method == "OPTIONS":
@@ -155,6 +165,44 @@ async def registry_api(request: Request, path: str) -> Response:
     if request.method == "OPTIONS":
         return Response(status_code=200)
     full_path = f"/v1/registry/{path}" if path else "/v1/registry"
+    event = await _build_event(request, full_path)
+    return _invoke_sync(_get_registry_handler(), event)
+
+
+@app.api_route("/v1/flow/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "OPTIONS"])
+async def flow_api(request: Request, path: str) -> Response:
+    """Admin Flow Builder: /v1/flow/* (JWT). Canonical-driven flow builder endpoints."""
+    if request.method == "OPTIONS":
+        return Response(status_code=200)
+    full_path = f"/v1/flow/{path}" if path else "/v1/flow"
+    event = await _build_event(request, full_path)
+    return _invoke_sync(_get_registry_handler(), event)
+
+
+@app.api_route("/v1/runtime/canonical/preflight", methods=["POST", "OPTIONS"])
+async def runtime_preflight_api(request: Request) -> Response:
+    """Runtime Preflight: POST /v1/runtime/canonical/preflight (JWT). Canonical runtime preflight."""
+    if request.method == "OPTIONS":
+        return Response(status_code=200)
+    event = await _build_event(request, "/v1/runtime/canonical/preflight")
+    return _invoke_sync(_get_registry_handler(), event)
+
+
+@app.api_route("/v1/runtime/canonical/execute", methods=["POST", "OPTIONS"])
+async def runtime_canonical_execute_api(request: Request) -> Response:
+    """Canonical Execute: POST /v1/runtime/canonical/execute (JWT). Bridge canonical to runtime execute."""
+    if request.method == "OPTIONS":
+        return Response(status_code=200)
+    event = await _build_event(request, "/v1/runtime/canonical/execute")
+    return _invoke_sync(_get_registry_handler(), event)
+
+
+@app.api_route("/v1/sandbox/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "OPTIONS"])
+async def sandbox_api(request: Request, path: str) -> Response:
+    """Admin Sandbox: /v1/sandbox/* (JWT). Canonical-driven mock sandbox endpoints."""
+    if request.method == "OPTIONS":
+        return Response(status_code=200)
+    full_path = f"/v1/sandbox/{path}" if path else "/v1/sandbox"
     event = await _build_event(request, full_path)
     return _invoke_sync(_get_registry_handler(), event)
 
@@ -276,7 +324,7 @@ def _jwt_cfg_for_local_path(path: str):
     from jwt_auth import JwtAuthConfig
 
     p = (path or "").strip().lower()
-    is_admin = p.startswith("/v1/registry") or p.startswith("/v1/audit") or p.startswith("/v1/admin")
+    is_admin = p.startswith("/v1/registry") or p.startswith("/v1/flow") or p.startswith("/v1/sandbox") or p.startswith("/v1/ai/debug") or p.startswith("/v1/audit") or p.startswith("/v1/admin") or p.startswith("/v1/runtime/canonical")
     is_vendor = p.startswith("/v1/vendor") or p.startswith("/v1/onboarding")
     is_runtime = p.startswith("/v1/execute") or p.startswith("/v1/ai/execute")
     route_profile = "admin" if is_admin else "vendor" if is_vendor else "runtime" if is_runtime else "generic"

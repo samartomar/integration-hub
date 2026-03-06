@@ -116,6 +116,45 @@ export interface MissionControlActivityResponse {
   lookbackMinutes: number;
 }
 
+export interface MissionControlTransactionSummary {
+  transactionId: string | null;
+  parentTransactionId?: string | null;
+  sourceVendor: string | null;
+  targetVendor: string | null;
+  operationCode: string | null;
+  canonicalVersion?: string | null;
+  correlationId: string | null;
+  mode: string;
+  status: string | null;
+  eventType?: string;
+  createdAt: string | null;
+  updatedAt?: string | null;
+  summary: string;
+}
+
+export interface MissionControlTransactionDetail extends MissionControlTransactionSummary {
+  /** Safe metadata only; no payload bodies. */
+  runtimeRequestPreview?: Record<string, unknown> | null;
+  /** Safe metadata only; no response body content. */
+  responseSummary?: {
+    errorCode?: string | null;
+    httpStatus?: number | null;
+    failureStage?: string | null;
+    targetHasBody?: boolean;
+    targetKeys?: string[];
+    canonicalHasBody?: boolean;
+    canonicalKeys?: string[];
+  };
+  preflightStatus?: string | null;
+  timeline?: Array<{
+    timestamp: string | null;
+    eventType: string;
+    status: string;
+    message: string;
+  }>;
+  notes?: string[];
+}
+
 export interface PolicySimulationResult {
   allowed: boolean;
   decisionCode: string;

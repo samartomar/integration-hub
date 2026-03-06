@@ -30,6 +30,8 @@ import type {
   PolicySimulationResult,
   MissionControlTopologyResponse,
   MissionControlActivityResponse,
+  MissionControlTransactionSummary,
+  MissionControlTransactionDetail,
 } from "../types";
 
 export interface ListTransactionsFilters {
@@ -237,6 +239,49 @@ export async function getMissionControlActivity(params?: {
   };
 }
 
+export interface ListMissionControlTransactionsFilters {
+  operationCode?: string;
+  sourceVendor?: string;
+  targetVendor?: string;
+  status?: string;
+  mode?: string;
+  correlationId?: string;
+  limit?: number;
+  lookbackMinutes?: number;
+}
+
+/** GET /v1/registry/mission-control/transactions */
+export async function listMissionControlTransactions(
+  filters?: ListMissionControlTransactionsFilters
+): Promise<{ items: MissionControlTransactionSummary[] }> {
+  const params = new URLSearchParams();
+  if (filters?.operationCode) params.set("operationCode", filters.operationCode);
+  if (filters?.sourceVendor) params.set("sourceVendor", filters.sourceVendor);
+  if (filters?.targetVendor) params.set("targetVendor", filters.targetVendor);
+  if (filters?.status) params.set("status", filters.status);
+  if (filters?.mode) params.set("mode", filters.mode);
+  if (filters?.correlationId) params.set("correlationId", filters.correlationId);
+  if (filters?.limit != null) params.set("limit", String(filters.limit));
+  if (filters?.lookbackMinutes != null) params.set("lookbackMinutes", String(filters.lookbackMinutes));
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  const { data } = await adminApi.get<{ items: MissionControlTransactionSummary[] }>(
+    `/v1/registry/mission-control/transactions${suffix}`
+  );
+  return {
+    items: Array.isArray(data?.items) ? data.items : [],
+  };
+}
+
+/** GET /v1/registry/mission-control/transactions/{transactionId} */
+export async function getMissionControlTransaction(
+  transactionId: string
+): Promise<MissionControlTransactionDetail> {
+  const { data } = await adminApi.get<MissionControlTransactionDetail>(
+    `/v1/registry/mission-control/transactions/${encodeURIComponent(transactionId)}`
+  );
+  return data;
+}
+
 /** POST /v1/admin/redrive/{transactionId} */
 export async function redrive(transactionId: string): Promise<RedriveResponse> {
   const { data } = await adminApi.post<RedriveResponse>(
@@ -383,6 +428,331 @@ export async function listContracts(
   }>(`/v1/registry/contracts${q ? `?${q}` : ""}`);
   const items = data?.contracts ?? data?.items ?? [];
   return { items, nextCursor: data?.nextCursor ?? null };
+}
+
+/** Canonical operation list item */
+export interface CanonicalOperationItem {
+  operationCode: string;
+  latestVersion: string;
+  title?: string;
+  description?: string;
+  versions?: string[];
+}
+
+/** Canonical operation detail with schemas and examples */
+export interface CanonicalOperationDetail {
+  operationCode: string;
+  version: string;
+  latestVersion?: string;
+  title?: string;
+  description?: string;
+  versionAliases?: string[];
+  requestPayloadSchema: Record<string, unknown>;
+  responsePayloadSchema: Record<string, unknown>;
+  examples: {
+    request: Record<string, unknown>;
+    response: Record<string, unknown>;
+    requestEnvelope?: Record<string, unknown>;
+    responseEnvelope?: Record<string, unknown>;
+  };
+}
+
+/** GET /v1/registry/canonical/operations */
+export async function listCanonicalOperations(): Promise<{ items: CanonicalOperationItem[] }> {
+  const { data } = await adminApi.get<{ items: CanonicalOperationItem[] }>(
+    "/v1/registry/canonical/operations"
+  );
+  return data;
+}
+
+/** GET /v1/registry/canonical/operations/{operationCode} */
+export async function getCanonicalOperation(
+  operationCode: string,
+  version?: string
+): Promise<CanonicalOperationDetail> {
+  const params = version ? `?version=${encodeURIComponent(version)}` : "";
+  const { data } = await adminApi.get<CanonicalOperationDetail>(
+    `/v1/registry/canonical/operations/${encodeURIComponent(operationCode)}${params}`
+  );
+  return data;
+}
+
+// --- Flow Builder (canonical-driven, read-only) ---
+
+/** GET /v1/flow/canonical/operations */
+export async function listFlowCanonicalOperations(): Promise<{ items: CanonicalOperationItem[] }> {
+  const { data } = await adminApi.get<{ items: CanonicalOperationItem[] }>(
+    "/v1/flow/canonical/operations"
+  );
+  return data;
+}
+
+/** GET /v1/flow/canonical/operations/{operationCode} */
+export async function getFlowCanonicalOperation(
+  operationCode: string,
+  version?: string
+): Promise<CanonicalOperationDetail> {
+  const params = version ? `?version=${encodeURIComponent(version)}` : "";
+  const { data } = await adminApi.get<CanonicalOperationDetail>(
+    `/v1/flow/canonical/operations/${encodeURIComponent(operationCode)}${params}`
+  );
+  return data;
+}
+
+/** Flow draft payload for validation */
+export interface FlowDraftPayload {
+  name: string;
+  operationCode: string;
+  version: string;
+  sourceVendor: string;
+  targetVendor: string;
+  trigger: { type: "MANUAL" | "API" };
+  mappingMode: "CANONICAL_FIRST";
+  notes?: string;
+}
+
+/** POST /v1/flow/draft/validate response */
+export interface FlowDraftValidateResponse {
+  valid: boolean;
+  errors?: Array<{ message: string; field?: string | null }>;
+  normalizedDraft?: FlowDraftPayload & { notes?: string | null };
+}
+
+/** Alias for FlowDraftValidateResponse */
+export type FlowDraftValidateResult = FlowDraftValidateResponse;
+
+/** POST /v1/flow/draft/validate */
+export async function validateFlowDraft(
+  payload: FlowDraftPayload
+): Promise<FlowDraftValidateResponse> {
+  const { data } = await adminApi.post<FlowDraftValidateResponse>(
+    "/v1/flow/draft/validate",
+    payload
+  );
+  return data;
+}
+
+// --- Sandbox (canonical-driven, mock-only) ---
+
+/** GET /v1/sandbox/canonical/operations */
+export async function listSandboxCanonicalOperations(): Promise<{
+  items: CanonicalOperationItem[];
+}> {
+  const { data } = await adminApi.get<{ items: CanonicalOperationItem[] }>(
+    "/v1/sandbox/canonical/operations"
+  );
+  return data;
+}
+
+/** GET /v1/sandbox/canonical/operations/{operationCode} */
+export async function getSandboxCanonicalOperation(
+  operationCode: string,
+  version?: string
+): Promise<CanonicalOperationDetail> {
+  const params = version ? `?version=${encodeURIComponent(version)}` : "";
+  const { data } = await adminApi.get<CanonicalOperationDetail>(
+    `/v1/sandbox/canonical/operations/${encodeURIComponent(operationCode)}${params}`
+  );
+  return data;
+}
+
+/** POST /v1/sandbox/request/validate request */
+export interface SandboxValidateRequestPayload {
+  operationCode: string;
+  version?: string;
+  payload: Record<string, unknown>;
+}
+
+/** POST /v1/sandbox/request/validate response */
+export interface SandboxValidateResponse {
+  valid: boolean;
+  errors?: Array<{ field: string; message: string }>;
+  normalizedVersion?: string;
+}
+
+/** POST /v1/sandbox/request/validate */
+export async function validateSandboxRequest(
+  body: SandboxValidateRequestPayload
+): Promise<SandboxValidateResponse> {
+  const { data } = await adminApi.post<SandboxValidateResponse>(
+    "/v1/sandbox/request/validate",
+    body
+  );
+  return data;
+}
+
+/** POST /v1/sandbox/mock/run request */
+export interface SandboxMockRunPayload {
+  operationCode: string;
+  version?: string;
+  payload: Record<string, unknown>;
+  context?: Record<string, unknown>;
+}
+
+/** POST /v1/sandbox/mock/run response */
+export interface SandboxMockRunResponse {
+  operationCode: string;
+  version: string;
+  mode: "MOCK";
+  valid: boolean;
+  requestPayloadValid: boolean;
+  requestEnvelopeValid: boolean;
+  responseEnvelopeValid: boolean;
+  requestEnvelope?: Record<string, unknown>;
+  responseEnvelope?: Record<string, unknown>;
+  notes?: string[];
+  errors?: Array<{ field: string; message: string }>;
+}
+
+/** POST /v1/sandbox/mock/run */
+export async function runMockSandboxTest(
+  body: SandboxMockRunPayload
+): Promise<SandboxMockRunResponse> {
+  const { data } = await adminApi.post<SandboxMockRunResponse>(
+    "/v1/sandbox/mock/run",
+    body
+  );
+  return data;
+}
+
+/** AI Debugger: debug report shape */
+export interface DebugReport {
+  debugType: "CANONICAL_REQUEST" | "FLOW_DRAFT" | "SANDBOX_RESULT";
+  status: "PASS" | "WARN" | "FAIL";
+  operationCode: string;
+  version: string;
+  summary: string;
+  findings: Array<{
+    severity: "ERROR" | "WARNING" | "INFO";
+    code: string;
+    title: string;
+    message: string;
+    field: string | null;
+    suggestion: string | null;
+  }>;
+  normalizedArtifacts: Record<string, unknown>;
+  notes: string[];
+}
+
+/** POST /v1/ai/debug/request/analyze */
+export async function analyzeDebugRequest(body: {
+  operationCode: string;
+  version?: string;
+  payload: Record<string, unknown>;
+}): Promise<DebugReport> {
+  const { data } = await adminApi.post<DebugReport>(
+    "/v1/ai/debug/request/analyze",
+    body
+  );
+  return data;
+}
+
+/** POST /v1/ai/debug/flow-draft/analyze */
+export async function analyzeDebugFlowDraft(body: {
+  draft: Record<string, unknown>;
+}): Promise<DebugReport> {
+  const { data } = await adminApi.post<DebugReport>(
+    "/v1/ai/debug/flow-draft/analyze",
+    body
+  );
+  return data;
+}
+
+/** POST /v1/ai/debug/sandbox-result/analyze */
+export async function analyzeDebugSandboxResult(body: {
+  result: Record<string, unknown>;
+}): Promise<DebugReport> {
+  const { data } = await adminApi.post<DebugReport>(
+    "/v1/ai/debug/sandbox-result/analyze",
+    body
+  );
+  return data;
+}
+
+/** Runtime Preflight: POST /v1/runtime/canonical/preflight request */
+export interface CanonicalRuntimePreflightPayload {
+  sourceVendor: string;
+  targetVendor: string;
+  envelope: {
+    operationCode: string;
+    version?: string;
+    direction: string;
+    correlationId?: string;
+    timestamp?: string;
+    context?: Record<string, unknown>;
+    payload: Record<string, unknown>;
+  };
+}
+
+/** Runtime Preflight response */
+export interface CanonicalRuntimePreflightResponse {
+  valid: boolean;
+  status: "READY" | "WARN" | "BLOCKED";
+  operationCode?: string;
+  canonicalVersion?: string;
+  sourceVendor?: string;
+  targetVendor?: string;
+  normalizedEnvelope?: Record<string, unknown>;
+  checks?: Array<{ code: string; status: string; message: string }>;
+  executionPlan?: { mode: string; canExecute: boolean; nextStep?: string };
+  errors?: Array<{ field: string; message: string }>;
+  notes?: string[];
+}
+
+/** POST /v1/runtime/canonical/preflight */
+export async function runCanonicalRuntimePreflight(
+  body: CanonicalRuntimePreflightPayload
+): Promise<CanonicalRuntimePreflightResponse> {
+  const { data } = await adminApi.post<CanonicalRuntimePreflightResponse>(
+    "/v1/runtime/canonical/preflight",
+    body
+  );
+  return data;
+}
+
+/** Canonical Bridge Execute: POST /v1/runtime/canonical/execute request */
+export interface CanonicalBridgePayload {
+  sourceVendor: string;
+  targetVendor: string;
+  mode: "DRY_RUN" | "EXECUTE";
+  envelope: {
+    operationCode: string;
+    version?: string;
+    direction: string;
+    correlationId?: string;
+    timestamp?: string;
+    context?: Record<string, unknown>;
+    payload: Record<string, unknown>;
+  };
+}
+
+/** Canonical Bridge Execute response */
+export interface CanonicalBridgeResponse {
+  mode: "DRY_RUN" | "EXECUTE";
+  valid: boolean;
+  status: string;
+  operationCode?: string;
+  canonicalVersion?: string;
+  sourceVendor?: string;
+  targetVendor?: string;
+  normalizedEnvelope?: Record<string, unknown>;
+  preflight?: CanonicalRuntimePreflightResponse;
+  executeRequestPreview?: Record<string, unknown>;
+  executionPlan?: { canExecute?: boolean; reason?: string };
+  executeResult?: { statusCode?: number; body?: unknown; error?: string };
+  errors?: Array<{ field: string; message: string }>;
+  notes?: string[];
+}
+
+/** POST /v1/runtime/canonical/execute */
+export async function runCanonicalBridgeExecution(
+  body: CanonicalBridgePayload
+): Promise<CanonicalBridgeResponse> {
+  const { data } = await adminApi.post<CanonicalBridgeResponse>(
+    "/v1/runtime/canonical/execute",
+    body
+  );
+  return data;
 }
 
 /** Admin: GET /v1/registry/contracts with optional filters */

@@ -2,6 +2,14 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# Ensure shared package is importable (syntegris_feature_handlers)
+_src_dir = Path(__file__).resolve().parent.parent
+if str(_src_dir) not in sys.path:
+    sys.path.insert(0, str(_src_dir))
+
 import base64
 import json
 import os
@@ -181,6 +189,30 @@ def _parse_body(raw: str | dict[str, Any] | None) -> dict[str, Any]:
         return json.loads(raw) if raw else {}
     except json.JSONDecodeError:
         return {}
+
+
+def _parse_body_strict(raw: str | dict[str, Any] | None) -> dict[str, Any]:
+    """Parse request body to dict. Raises json.JSONDecodeError on malformed JSON."""
+    if raw is None:
+        return {}
+    if isinstance(raw, dict):
+        return raw
+    if not raw:
+        return {}
+    return json.loads(raw)
+
+
+def _reject_source_vendor_spoof(body: dict[str, Any], auth_vendor: str) -> dict[str, Any] | None:
+    """
+    If body contains sourceVendor and it differs from authenticated vendor, return 403.
+    Returns None if OK (body sourceVendor absent, or matches auth).
+    """
+    body_src = (body.get("sourceVendor") or body.get("source_vendor") or "").strip().upper()
+    if not body_src:
+        return None
+    if body_src != (auth_vendor or "").strip().upper():
+        return _error(403, "VENDOR_SPOOF_BLOCKED", "Request sourceVendor does not match authenticated vendor identity")
+    return None
 
 
 def _parse_verification_request(value: Any) -> dict[str, Any] | None | bool:
@@ -5227,6 +5259,231 @@ def _handle_post_flow_test(
 # --- Vendor self-service API keys: removed (control_plane.vendor_api_keys table removed) ---
 
 
+# --- Syntegris partner endpoints (schema-backed, vendor-scoped) ---
+
+
+def _check_allowlist_for_partner_preflight(conn: Any, source_vendor: str, target_vendor: str, operation_code: str) -> bool:
+    """Check if (source, target, operation) has an allowlist rule for OUTBOUND or BOTH."""
+    if not source_vendor or not target_vendor or not operation_code:
+        return False
+    row = _execute_one(
+        conn,
+        sql.SQL(
+            """
+            SELECT 1 FROM control_plane.vendor_operation_allowlist
+            WHERE source_vendor_code = %s AND target_vendor_code = %s AND operation_code = %s
+              AND (UPPER(COALESCE(flow_direction, 'BOTH')) IN ('OUTBOUND', 'BOTH'))
+            LIMIT 1
+            """
+        ),
+        (source_vendor.strip().upper(), target_vendor.strip().upper(), operation_code.strip().upper()),
+    )
+    return row is not None
+
+
+def _handle_syntegris_canonical_operations_list(event: dict[str, Any], vendor_code: str) -> dict[str, Any]:
+    """GET /v1/vendor/syntegris/canonical/operations - schema-backed list."""
+    from shared.syntegris_feature_handlers import list_canonical_operations
+
+    qp = _parse_query_params(event)
+    version = (qp.get("version") or "").strip() or None
+    items = list_canonical_operations()
+    return _success(200, {"items": items, "version": version})
+
+
+def _handle_syntegris_canonical_operation_detail(event: dict[str, Any], vendor_code: str, operation_code: str) -> dict[str, Any]:
+    """GET /v1/vendor/syntegris/canonical/operations/{operationCode} - schema-backed detail."""
+    from shared.syntegris_feature_handlers import get_canonical_operation
+
+    qp = _parse_query_params(event)
+    version = (qp.get("version") or "").strip() or None
+    op = get_canonical_operation(operation_code, version)
+    if op is None:
+        return _error(404, "NOT_FOUND", f"Operation '{operation_code}' not found in canonical registry")
+    return _success(200, op)
+
+
+def _handle_syntegris_sandbox_validate(event: dict[str, Any], vendor_code: str) -> dict[str, Any]:
+    """POST /v1/vendor/syntegris/sandbox/request/validate."""
+    from shared.syntegris_feature_handlers import validate_sandbox_request
+
+    body = _parse_body(event.get("body"))
+    if not isinstance(body, dict):
+        return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+    try:
+        result = validate_sandbox_request(body)
+        return _success(200, result)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_syntegris_sandbox_mock_run(event: dict[str, Any], vendor_code: str) -> dict[str, Any]:
+    """POST /v1/vendor/syntegris/sandbox/mock/run."""
+    from shared.syntegris_feature_handlers import run_sandbox_mock
+
+    body = _parse_body(event.get("body"))
+    if not isinstance(body, dict):
+        return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+    try:
+        result = run_sandbox_mock(body)
+        return _success(200, result)
+    except ValueError as e:
+        return _error(400, "VALIDATION_ERROR", str(e))
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_syntegris_ai_debug_request_analyze(event: dict[str, Any], vendor_code: str) -> dict[str, Any]:
+    """POST /v1/vendor/syntegris/ai/debug/request/analyze."""
+    from shared.syntegris_feature_handlers import analyze_canonical_request
+
+    body = _parse_body(event.get("body"))
+    if not isinstance(body, dict):
+        return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+    try:
+        report = analyze_canonical_request(body)
+        return _success(200, report)
+    except ValueError as e:
+        return _error(400, "VALIDATION_ERROR", str(e))
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_syntegris_ai_debug_flow_draft_analyze(event: dict[str, Any], vendor_code: str) -> dict[str, Any]:
+    """POST /v1/vendor/syntegris/ai/debug/flow-draft/analyze."""
+    from shared.syntegris_feature_handlers import analyze_flow_draft
+
+    body = _parse_body(event.get("body"))
+    if not isinstance(body, dict):
+        return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+    try:
+        report = analyze_flow_draft(body)
+        return _success(200, report)
+    except ValueError as e:
+        return _error(400, "VALIDATION_ERROR", str(e))
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_syntegris_ai_debug_sandbox_result_analyze(event: dict[str, Any], vendor_code: str) -> dict[str, Any]:
+    """POST /v1/vendor/syntegris/ai/debug/sandbox-result/analyze."""
+    from shared.syntegris_feature_handlers import analyze_sandbox_result
+
+    body = _parse_body(event.get("body"))
+    if not isinstance(body, dict):
+        return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+    try:
+        report = analyze_sandbox_result(body)
+        return _success(200, report)
+    except ValueError as e:
+        return _error(400, "VALIDATION_ERROR", str(e))
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_syntegris_runtime_preflight(event: dict[str, Any], vendor_code: str) -> dict[str, Any]:
+    """POST /v1/vendor/syntegris/runtime/canonical/preflight - sourceVendor from auth."""
+    from shared.syntegris_feature_handlers import run_canonical_preflight
+
+    try:
+        body = _parse_body_strict(event.get("body"))
+    except json.JSONDecodeError as e:
+        return _error(400, "INVALID_JSON", f"Malformed JSON body: {e}")
+    if not isinstance(body, dict):
+        return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+    if err := _reject_source_vendor_spoof(body, vendor_code):
+        return err
+    payload = dict(body)
+    payload["sourceVendor"] = vendor_code
+    target = (payload.get("targetVendor") or payload.get("target_vendor") or "").strip()
+    envelope = payload.get("envelope")
+    op_code = ""
+    if isinstance(envelope, dict):
+        op_code = (envelope.get("operationCode") or envelope.get("operation_code") or "").strip().upper()
+    allowlist_ok: bool | None = None
+    try:
+        with _get_connection() as conn:
+            if vendor_code and target and op_code:
+                allowlist_ok = _check_allowlist_for_partner_preflight(conn, vendor_code, target, op_code)
+    except Exception:
+        pass
+    result = run_canonical_preflight(payload, allowlist_ok=allowlist_ok)
+    return _success(200, result)
+
+
+def _handle_syntegris_runtime_execute(event: dict[str, Any], vendor_code: str) -> dict[str, Any]:
+    """POST /v1/vendor/syntegris/runtime/canonical/execute - sourceVendor from auth."""
+    from shared.syntegris_feature_handlers import run_canonical_bridge
+
+    try:
+        body = _parse_body_strict(event.get("body"))
+    except json.JSONDecodeError as e:
+        return _error(400, "INVALID_JSON", f"Malformed JSON body: {e}")
+    if not isinstance(body, dict):
+        return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+    if err := _reject_source_vendor_spoof(body, vendor_code):
+        return err
+    payload = dict(body)
+    payload["sourceVendor"] = vendor_code
+    if not payload.get("mode"):
+        payload["mode"] = "DRY_RUN"
+    target = (payload.get("targetVendor") or payload.get("target_vendor") or "").strip()
+    envelope = payload.get("envelope")
+    op_code = ""
+    if isinstance(envelope, dict):
+        op_code = (envelope.get("operationCode") or envelope.get("operation_code") or "").strip().upper()
+    allowlist_ok: bool | None = None
+    try:
+        with _get_connection() as conn:
+            if vendor_code and target and op_code:
+                allowlist_ok = _check_allowlist_for_partner_preflight(conn, vendor_code, target, op_code)
+    except Exception:
+        pass
+
+    def executor(execute_request: dict[str, Any]) -> dict[str, Any]:
+        from routing_lambda import handler as routing_handler
+
+        req_ctx = event.get("requestContext") or {}
+        auth = req_ctx.get("authorizer") or {}
+        jwt_claims = auth.get("jwt", {}).get("claims", {}) if isinstance(auth.get("jwt"), dict) else {}
+        if not isinstance(jwt_claims, dict):
+            jwt_claims = {}
+        claims_for_execute = dict(jwt_claims)
+        claims_for_execute["bcpAuth"] = vendor_code
+        if "aud" not in claims_for_execute and "audience" not in claims_for_execute:
+            claims_for_execute["aud"] = os.environ.get("RUNTIME_API_AUDIENCE") or os.environ.get("IDP_AUDIENCE") or "api://default"
+        execute_body = {
+            "targetVendor": execute_request.get("targetVendor"),
+            "operation": execute_request.get("operation"),
+            "parameters": execute_request.get("parameters") or {},
+        }
+        if execute_request.get("idempotencyKey"):
+            execute_body["idempotencyKey"] = execute_request["idempotencyKey"]
+        execute_event = {
+            "path": "/v1/execute",
+            "rawPath": "/v1/execute",
+            "httpMethod": "POST",
+            "headers": {"content-type": "application/json"},
+            "body": json.dumps(execute_body),
+            "queryStringParameters": {},
+            "pathParameters": {},
+            "requestContext": {
+                "requestId": req_ctx.get("requestId") or str(_uuid.uuid4()),
+                "http": {"method": "POST", "path": "/v1/execute"},
+                "authorizer": {
+                    "principalId": vendor_code,
+                    "vendor_code": vendor_code,
+                    "jwt": {"claims": claims_for_execute},
+                },
+            },
+            "isBase64Encoded": False,
+        }
+        return routing_handler(execute_event, None)
+
+    result = run_canonical_bridge(payload, executor=executor, allowlist_ok=allowlist_ok)
+    return _success(200, result)
+
+
 # --- Main handler ---
 
 
@@ -5543,6 +5800,40 @@ def _handler_impl(event: dict[str, Any], context: object) -> dict[str, Any]:
             with _get_connection() as conn:
                 return _handle_put_flow(event, conn, vendor_code, operation_code, canonical_version)
         return _error(405, "METHOD_NOT_ALLOWED", "Use GET or PUT for flow")
+
+    if resource == "syntegris":
+        sub = segments[vendor_idx + 2] if len(segments) > vendor_idx + 2 else None
+        sub2 = segments[vendor_idx + 3] if len(segments) > vendor_idx + 3 else None
+        sub3 = segments[vendor_idx + 4] if len(segments) > vendor_idx + 4 else None
+        sub4 = segments[vendor_idx + 5] if len(segments) > vendor_idx + 5 else None
+        sub5 = segments[vendor_idx + 6] if len(segments) > vendor_idx + 6 else None
+        if sub == "canonical" and sub2 == "operations":
+            if method == "GET":
+                if sub3:
+                    return _handle_syntegris_canonical_operation_detail(event, vendor_code, sub3)
+                return _handle_syntegris_canonical_operations_list(event, vendor_code)
+            return _error(405, "METHOD_NOT_ALLOWED", "Use GET for canonical operations")
+        if sub == "sandbox":
+            if sub2 == "request" and sub3 == "validate" and method == "POST":
+                return _handle_syntegris_sandbox_validate(event, vendor_code)
+            if sub2 == "mock" and sub3 == "run" and method == "POST":
+                return _handle_syntegris_sandbox_mock_run(event, vendor_code)
+            return _error(404, "NOT_FOUND", "Unknown syntegris sandbox path")
+        if sub == "ai" and sub2 == "debug":
+            if sub3 == "request" and sub4 == "analyze" and method == "POST":
+                return _handle_syntegris_ai_debug_request_analyze(event, vendor_code)
+            if sub3 == "flow-draft" and sub4 == "analyze" and method == "POST":
+                return _handle_syntegris_ai_debug_flow_draft_analyze(event, vendor_code)
+            if sub3 == "sandbox-result" and sub4 == "analyze" and method == "POST":
+                return _handle_syntegris_ai_debug_sandbox_result_analyze(event, vendor_code)
+            return _error(404, "NOT_FOUND", "Unknown syntegris AI debug path")
+        if sub == "runtime" and sub2 == "canonical":
+            if sub3 == "preflight" and method == "POST":
+                return _handle_syntegris_runtime_preflight(event, vendor_code)
+            if sub3 == "execute" and method == "POST":
+                return _handle_syntegris_runtime_execute(event, vendor_code)
+            return _error(404, "NOT_FOUND", "Unknown syntegris runtime path")
+        return _error(404, "NOT_FOUND", "Unknown syntegris path")
 
     return _error(404, "NOT_FOUND", "Unknown vendor registry path")
 

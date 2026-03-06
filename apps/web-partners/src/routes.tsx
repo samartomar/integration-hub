@@ -17,6 +17,12 @@ import {
 import { ExecutePage } from "./pages/ExecutePage";
 import { VendorTransactionsPage } from "./pages/VendorTransactionsPage";
 import { VendorFlowBuilderPage } from "./pages/VendorFlowBuilderPage";
+import { PartnerCanonicalExplorerPage } from "./pages/PartnerCanonicalExplorerPage";
+import { PartnerSandboxPage } from "./pages/PartnerSandboxPage";
+import { PartnerAIDebuggerPage } from "./pages/PartnerAIDebuggerPage";
+import { PartnerRuntimePreflightPage } from "./pages/PartnerRuntimePreflightPage";
+import { PartnerCanonicalExecutePage } from "./pages/PartnerCanonicalExecutePage";
+import { FlowJourneyPage } from "./pages/FlowJourneyPage";
 import { FeatureRoute } from "./features/FeatureFlagContext";
 
 export const router = createBrowserRouter([
@@ -42,8 +48,14 @@ export const router = createBrowserRouter([
       { path: "/auth-security", element: <RedirectAuthToProfiles /> },
       { path: "/endpoints", element: <RedirectEndpointsToTab /> },
       { path: "/contracts", element: <RedirectContractsToConfiguration /> },
-      { path: "/builder", element: <FeatureRoute featureCode="flow_builder"><VendorFlowBuilderPage /></FeatureRoute> },
+      { path: "/builder", element: <Navigate to="/flow" replace /> },
       { path: "/builder/:operationCode/:canonicalVersion", element: <FeatureRoute featureCode="flow_builder"><VendorFlowBuilderPage /></FeatureRoute> },
+      { path: "/flow", element: <FeatureRoute featureCode="flow_builder"><FlowJourneyPage /></FeatureRoute> },
+      { path: "/canonical", element: <FeatureRoute featureCode="flow_builder"><PartnerCanonicalExplorerPage /></FeatureRoute> },
+      { path: "/sandbox", element: <FeatureRoute featureCode="flow_builder"><PartnerSandboxPage /></FeatureRoute> },
+      { path: "/ai-debugger", element: <FeatureRoute featureCode="flow_builder"><PartnerAIDebuggerPage /></FeatureRoute> },
+      { path: "/runtime-preflight", element: <FeatureRoute featureCode="flow_builder"><PartnerRuntimePreflightPage /></FeatureRoute> },
+      { path: "/canonical-execute", element: <FeatureRoute featureCode="flow_builder"><PartnerCanonicalExecutePage /></FeatureRoute> },
       { path: "/transactions", element: <FeatureRoute featureCode="audit_view"><VendorTransactionsPage /></FeatureRoute> },
       { path: "/debug", element: <Navigate to="/transactions" replace /> },
       { path: "/onboarding", element: <Navigate to="/" replace /> },
