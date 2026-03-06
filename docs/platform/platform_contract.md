@@ -1,625 +1,218 @@
-
-#  Platform Contract
-
-*(Integration Hub Platform)*
-
+# Platform Contract
 Version: 1.0
-Scope: Backend Runtime, Admin UI, Vendor UI
 
-This document defines the **core behavioral contract** for the platform.
-It ensures that future changes, refactors, or AI-generated code **do not alter system guarantees**.
+This document defines the required behavior of the platform across backend and UI.
+It is the source of truth for future implementation, review, and regression checks.
 
 ---
 
-# 1. Platform Identity Model
+## 1. Identity Contract
 
-## Vendor Identity
+### Vendor identity
+Vendor identity must come only from the authenticated JWT claim:
 
-Vendor identity must always originate from the **authenticated JWT token**.
+- `bcpAuth`
 
-Canonical claim:
+Vendor identity must **not** come from:
 
-```json
-bcpAuth
-```
+- request body
+- query parameters
+- headers
+- UI state
+- local storage
 
+If a request contains a vendor identifier that does not match the authenticated JWT vendor, the request must be denied with:
+
+- `VENDOR_SPOOF_BLOCKED`
+
+### Admin identity
+Admin capabilities must require:
+
+- valid admin JWT
+- required admin group membership
+
+---
+
+## 2. Backend Lambda Contract
+
+All new protected HTTP lambdas should use the shared lambda entry contract (`apps/api/src/shared/lambda_entry_contract.py`) unless there is a documented reason not to.
+
+All HTTP lambda entrypoints must follow this order:
+
+1. Authenticate request
+2. Resolve identity from JWT
+3. Evaluate policy
+4. Validate feature/route access
+5. Execute business logic
+6. Return canonical response
+7. Emit audit/observability metadata where required
+
+Required entrypoints include:
+
+- `routing_lambda.py`
+- `registry_lambda.py`
+- `vendor_registry_lambda.py`
+- `ai_gateway_lambda.py`
+- `audit_lambda.py`
+- `onboarding_lambda.py`
+
+Worker lambdas (for example EventBridge/background processors) are exempt from JWT identity requirements but must still follow safe response/logging behavior.
+
+---
+
+## 3. Policy Contract
+
+Protected lambdas must call centralized policy evaluation before business logic.
+
+Primary entrypoint:
+
+- `evaluate_policy(...)`
+
+Policy evaluation must enforce, where applicable:
+
+- auth required
+- valid identity
+- admin group checks
+- vendor spoof prevention
+- allowlist enforcement
+- feature gating
+- PHI gating
+
+---
+
+## 4. Canonical Response Contract
+
+Protected APIs must return canonical success/error envelopes.
+
+### Success
+Responses should use platform-standard success helpers.
+
+### Error
+Responses should use platform-standard error helpers.
+
+Protected routes must not return ad hoc error objects such as:
+
+- `{ "error": ... }`
+- `{ "message": ... }`
+
+### Allowed exception
+If a subsystem intentionally uses a custom response envelope, it must be documented explicitly.
 Example:
-
-```json
-{
-  "sub": "user123",
-  "bcpAuth": "LH001",
-  "groups": ["integrationhub-vendors"]
-}
-```
-
-### Rules
-
-Vendor identity **must NOT come from:**
-
-* request body
-* query params
-* headers
-* UI selection
-* cookies
-* local storage
-
-Vendor identity **must come from:**
-
-```
-JWT → bcpAuth claim
-```
+- `ai_gateway_lambda.py` may use an AI-specific envelope if that behavior is intentional and stable.
 
 ---
 
-# 2. Backend Lambda Contract
+## 5. PHI / Privacy Contract
 
-All backend entrypoints must follow the same contract.
-
-## Lambda Entry Points
-
-Current runtime entrypoints:
-
-```
-routing_lambda.py
-registry_lambda.py
-vendor_registry_lambda.py
-ai_gateway_lambda.py
-audit_lambda.py
-onboarding_lambda.py
-endpoint_verifier_lambda.py
-```
-
-Each lambda must follow the lifecycle below.
-
----
-
-# 3. Runtime Execution Contract
-
-Applicable to:
-
-```
-routing_lambda
-ai_gateway_lambda
-```
-
-### Required execution order
-
-```
-1. JWT validation
-2. Vendor identity extraction
-3. Policy evaluation
-4. Feature gate validation
-5. Allowlist verification
-6. Request transformation
-7. Downstream invocation
-8. Audit logging
-9. Canonical response
-```
-
-### Vendor identity rule
-
-```python
-vendor_code = jwt_claims["bcpAuth"]
-```
-
-Any mismatch between request and token must result in:
-
-```
-VENDOR_SPOOF_BLOCKED
-```
-
----
-
-# 4. Policy Engine Contract
-
-Policy engine must be the **single centralized decision layer**.
-
-Primary function:
-
-```
-evaluate_policy(context)
-```
-
-### Required checks
-
-Policy engine must enforce:
-
-```
-AUTH_REQUIRED
-AUTH_INVALID
-ADMIN_GROUP_REQUIRED
-VENDOR_CLAIM_MISSING
-VENDOR_SPOOF_BLOCKED
-ALLOWLIST_DENY
-FEATURE_DISABLED
-PHI_APPROVAL_REQUIRED
-```
-
-Policy decisions must be:
-
-* deterministic
-* explainable
-* logged
-
----
-
-# 5. Canonical Response Contract
-
-All API responses must use canonical format.
-
-Success:
-
-```json
-{
-  "status": "SUCCESS",
-  "data": {},
-  "correlationId": "uuid"
-}
-```
-
-Error:
-
-```json
-{
-  "status": "ERROR",
-  "code": "POLICY_DENIED",
-  "message": "Allowlist restriction",
-  "correlationId": "uuid"
-}
-```
-
-### Forbidden patterns
-
-Endpoints must NOT return:
-
-```
-{ "error": "something" }
-{ "message": "failed" }
-```
-
-All errors must use canonical format.
-
----
-
-# 6. Observability Contract
-
-Every runtime action must emit metadata-only logs.
-
-Audit events must never contain:
-
-```
-request_body
-response_body
-payload
-PHI fields
-```
-
-Unless PHI access is explicitly expanded.
-
----
-
-# 7. PHI Security Contract
-
-PHI must be protected by default.
-
-Default state:
-
-```
-PHI REDACTED
-```
+Sensitive data must be redacted by default.
 
 PHI expansion requires:
 
-```
-expandSensitive=true
-+
-PHI_APPROVED_GROUP
-```
+- explicit request (`expandSensitive=true`)
+- approved group membership
+- audit trail
 
-Expansion must generate audit events:
+Mission Control, policy decision logs, and observability endpoints must return **metadata only** and must never expose:
 
-```
-PHI_VIEW_ENABLED
-PHI_VIEWED_TRANSACTION
-```
+- request body
+- response body
+- debug payload
+- PHI/PII fields
 
 ---
 
-# 8. Admin UI Contract
+## 6. Admin UI Contract
 
-Admin UI represents the **platform control plane**.
+Admin UI is the control and observability plane.
 
-Admin UI lives in:
+Admin UI may expose:
 
-```
-apps/web-cip
-```
-
----
-
-## Admin Responsibilities
-
-Admin UI provides:
-
-* platform configuration
-* vendor management
-* policy governance
-* runtime observability
-* debugging tools
-* AI tools
-
----
-
-## Admin Feature Areas
-
-### Home / Orientation
-
-Platform overview and rollout phase guidance.
-
-### Registry
-
-Vendor and integration configuration.
-
-Includes:
-
-```
-vendors
-auth profiles
-endpoints
-contracts
-access control
-```
-
----
-
-### Governance
-
-Includes:
-
-```
-policy simulator
-policy decision viewer
-approvals
-allowlist
-```
-
----
-
-### Observability
-
-Includes:
-
-```
-transactions
-audit
-mission control
-activity streams
-```
-
----
-
-### Optimization
-
-Includes:
-
-```
-AI formatter
-AI debugger
-usage & billing
-```
-
----
-
-### Admin Restrictions
+- registry/configuration
+- policy tools
+- approvals
+- audit/transactions
+- mission control
+- AI/admin tools
 
 Admin UI must:
 
-* require admin authentication
-* enforce admin group membership
-* respect PHI expansion gating
-* treat debug tools as read-only unless explicitly designed otherwise
+- require admin auth
+- respect PHI gating
+- never use UI state as the source of truth for identity or authorization
 
 ---
 
-# 9. Vendor UI Contract
+## 7. Vendor UI Contract
 
-Vendor UI represents the **vendor experience plane**.
+Vendor UI is the vendor-scoped experience plane.
 
-Vendor UI lives in:
+Vendor UI may expose only:
 
-```
-apps/web-partners
-```
-
----
-
-## Vendor Responsibilities
-
-Vendor UI allows vendors to:
-
-* configure integrations
-* build flows
-* test integrations
-* observe their transactions
-
----
-
-## Vendor Feature Areas
-
-### Home
-
-Vendor onboarding and readiness guidance.
-
----
-
-### Configuration
-
-Vendor-managed settings:
-
-```
-auth profiles
-endpoints
-operation configuration
-access visibility
-```
-
-Vendor must never edit platform-level configuration.
-
----
-
-### Flow Builder
-
-Allows vendor to map vendor payloads to canonical operations.
-
-Builder must enforce:
-
-```
-schema validation
-canonical structure
-operation compatibility
-```
-
----
-
-### Execute / Sandbox
-
-Vendor testing environment.
-
-Must support:
-
-```
-vendor-scoped execution
-safe testing
-policy feedback
-```
-
-Must never allow:
-
-```
-cross-vendor execution
-policy bypass
-```
-
----
-
-### Vendor Observability
-
-Vendor may view:
-
-```
-their transactions
-their execution results
-their policy outcomes
-```
-
-Vendor must never view:
-
-```
-other vendor activity
-platform-wide metrics
-admin-only diagnostics
-```
-
----
-
-# 10. Route Ownership Contract
-
-Routes define authority boundaries.
-
-## Admin routes
-
-```
-/admin/*
-```
-
-Admin routes own:
-
-```
-registry
-policy
-approvals
-mission control
-audit
-platform configuration
-```
-
----
-
-## Vendor routes
-
-```
-/home
-/flows
-/configuration
-/execute
-/transactions
-```
-
-Vendor routes own:
-
-```
-vendor configuration
-vendor flows
-vendor execution
-vendor transaction history
-```
-
----
-
-## Forbidden combinations
+- vendor-scoped configuration
+- vendor-scoped flows
+- vendor-scoped execute/sandbox
+- vendor-scoped transactions/diagnostics
 
 Vendor UI must never expose:
 
-```
-platform registry
-admin observability
-cross-vendor configuration
-```
+- admin-only controls
+- cross-vendor data
+- platform-wide internal governance views
 
-Admin UI must never rely on vendor-only endpoints.
+Vendor identity must always be backend-derived from JWT, not selected by the UI in production.
 
 ---
 
-# 11. UI State Contract
+## 8. Route Ownership Contract
 
-UI must never be the source of truth for:
+### Admin routes own:
+- platform-wide configuration
+- governance
+- policy
+- mission control
+- audit/transactions
+- approvals
 
-```
-vendor identity
-authorization
-policy decisions
-feature enablement
-```
+### Vendor routes own:
+- vendor configuration
+- vendor flows
+- vendor execution
+- vendor-scoped transaction history
+- vendor diagnostics
 
-Those must come from backend.
-
-UI may depend on:
-
-```
-JWT identity
-feature flags
-route params
-backend responses
-```
+Admin behavior must not leak into vendor routes.
+Vendor routes must not depend on admin-only APIs unless explicitly proxied and permission-safe.
 
 ---
 
-# 12. Rollout Phase Contract
+## 9. Rollout / Feature Contract
 
-Platform rollout occurs in phases.
+Feature flags and phases control **visibility**, not security truth.
 
-Example phases:
+Rules:
 
-```
-Phase 0 — Minimum viable platform
-Phase 1 — Build integrations
-Phase 2 — Observe runtime
-Phase 3 — Govern policies
-Phase 4 — Optimize via AI
-```
-
-Phase flags control **visibility only**.
-
-Security enforcement must remain active regardless of phase.
+- missing flag => disabled
+- disabled routes must fail safely
+- feature hiding must not relax backend enforcement
+- backend security remains active regardless of rollout phase
 
 ---
 
-# 13. Platform Integrity Rules
+## 10. Platform Integrity Rules
 
-The following must never be violated.
+These must always remain true:
 
-### Identity integrity
+- vendor identity comes from JWT `bcpAuth`
+- protected lambdas call policy evaluation
+- protected APIs use canonical responses (except documented exceptions)
+- PHI is redacted by default
+- admin and vendor boundaries remain separate
+- vendor spoofing is blocked
 
-Vendor identity always comes from JWT.
-
-### Security integrity
-
-Policy engine must enforce access.
-
-### Data integrity
-
-Canonical schemas must validate integrations.
-
-### UI integrity
-
-Admin and Vendor UI must remain separated.
-
-### Observability integrity
-
-Logs must remain metadata-only unless PHI expansion approved.
+Any violation of these rules is a platform regression.
 
 ---
 
-# 14. Platform Validation Checklist
+## 11. Lambda Entry Contract
 
-After any feature implementation verify:
-
-### Backend
-
-* JWT validation present
-* vendor identity from JWT
-* policy engine invoked
-* canonical response used
-* audit event emitted
-
----
-
-### Admin UI
-
-* admin authentication enforced
-* PHI redaction respected
-* routes protected
-* governance tools functional
-
----
-
-### Vendor UI
-
-* vendor-scoped data only
-* no cross-vendor exposure
-* policy feedback visible
-* sandbox execution safe
-
----
-
-# 15. Future Modules (Conceptual)
-
-Future product branding may organize platform modules as:
-
-```
-Syntegris Canon
-Syntegris Flow
-Syntegris Sandbox
-Syntegris AI
-Syntegris Policy
-Syntegris Registry
-Syntegris Runtime
-Syntegris Mission Control
-```
-
-These names represent **conceptual modules** and do not require immediate code restructuring.
-
----
-
-# 16. Contract Enforcement
-
-This contract must be used to validate:
-
-* new features
-* refactors
-* AI-generated code
-* integration changes
-
-Any deviation from this contract must be treated as a **platform regression**.
-
----
-
-# Final Recommendation
-
-Keep this document **short and stable** and use it as the **reference whenever Cursor writes new code**.
-
-Then give Cursor instructions like:
-
-> “Implement this feature but ensure it respects the Platform Contract.”
-
+All new protected HTTP lambdas should use the shared lambda entry contract (`apps/api/src/shared/lambda_entry_contract.py`) unless there is a documented reason not to.
