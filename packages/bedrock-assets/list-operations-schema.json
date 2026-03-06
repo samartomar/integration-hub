@@ -1,0 +1,28 @@
+{
+  "name": "ListOperations",
+  "description": "List available integration operations. Optionally filter by source and target licensee (allowlist).",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "sourceVendor": {
+        "type": "string",
+        "description": "Filter by source licensee code (e.g. LH001). Must be paired with targetVendor.",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "targetVendor": {
+        "type": "string",
+        "description": "Filter by target licensee code (e.g. LH002). Must be paired with sourceVendor.",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "isActive": {
+        "type": "boolean",
+        "description": "Filter by active status (default true)",
+        "default": true
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  }
+}

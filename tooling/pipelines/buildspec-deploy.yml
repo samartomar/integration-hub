@@ -1,0 +1,21 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.11
+      nodejs: 20
+    commands:
+      - pip install --upgrade pip
+      - pip install -r requirements.txt
+      - npm install -g aws-cdk
+
+  build:
+    commands:
+      - echo "=== Git source (verify pipeline picked correct ref) ==="
+      - git rev-parse HEAD 2>/dev/null || echo "git not available"
+      - git log -1 --oneline 2>/dev/null || true
+      - echo "======================================================"
+      - echo "Deploying CDK stacks..."
+      - |
+        cdk deploy --all --require-approval never

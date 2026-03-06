@@ -1,0 +1,46 @@
+{
+  "name": "ExecuteIntegration",
+  "description": "Execute an integration between a source licensee and target licensee using a canonical operation. Uses the Integration Hub API. Use ListOperations to discover valid operations.",
+  "input_schema": {
+    "json": {
+      "type": "object",
+      "required": [
+        "sourceVendor",
+        "targetVendor",
+        "operation",
+        "parameters"
+      ],
+      "properties": {
+        "sourceVendor": {
+          "type": "string",
+          "description": "Licensee code of the caller, e.g. LH001.",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "targetVendor": {
+          "type": "string",
+          "description": "Licensee code of the provider, e.g. LH002.",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "operation": {
+          "type": "string",
+          "description": "Canonical operation code, e.g. GET_RECEIPT.",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "parameters": {
+          "type": "object",
+          "description": "Canonical parameters object that must match the operation's canonical request schema."
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "description": "Optional stable key to deduplicate repeated calls; omit if you don't need replay protection.",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

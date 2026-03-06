@@ -1,0 +1,18 @@
+---
+description: High-level context for Integration Hub repository
+alwaysApply: true
+---
+
+# Integration Hub – Context
+
+- This repository implements a multi-vendor Integration Hub with:
+  - **Control Plane** (admin registry)
+  - **Vendor Plane** (vendor portal + vendor APIs) or (partner portal + partner APIs)
+  - **Runtime Plane** (execute transactions) 
+  - **AI Gateway** (prompt + DATA assist)
+- All vendor identity comes from **JWT**, not headers, not API keys.
+- Everything is modeled as:
+  - Canonical operations
+  - Vendor overrides (contracts, mappings, endpoints)
+  - Admin-governed allowlist
+- The system supports **OUTBOUND** and **INBOUND** flows with clear direction semantics.

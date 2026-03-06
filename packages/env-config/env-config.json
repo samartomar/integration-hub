@@ -1,0 +1,5 @@
+{
+  "environment": "dev",
+  "customDomainRoot": "aws.gosam.info",
+  "customDomainHostedZoneId": "Z09452162ST8APODGEU83"
+}

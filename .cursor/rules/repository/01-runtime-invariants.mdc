@@ -1,0 +1,21 @@
+Runtime Execution Rules
+
+The Integration Hub processes integrations using this sequence:
+
+1. Authenticate request (JWT)
+2. Resolve vendor identity from bcpAuth
+3. Check allowlist rules
+4. Validate request schema
+5. Map request to target vendor format
+6. Call downstream vendor API
+7. Validate response
+8. Map response to caller format
+9. Emit audit event
+10. Emit usage event
+
+Never bypass validation or allowlist checks.
+
+All runtime executions must emit:
+transaction logs
+audit events
+usage events

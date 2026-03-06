@@ -1,0 +1,42 @@
+# Local Integration Hub - Hub API (no Postgres - use local DB)
+# Usage: docker compose up -d
+# Prereq: Local Postgres running. Run: make local-db-init (with correct DATABASE_URL)
+# (version attribute removed—obsolete in Docker Compose v2+)
+
+services:
+  hub-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    environment:
+      DATABASE_URL: postgresql://hub:hub@host.docker.internal:5434/hub
+      DB_URL: postgresql://hub:hub@host.docker.internal:5434/hub
+      RUN_ENV: local
+      USE_BEDROCK: "false"
+      ADMIN_IDP_ISSUER: https://integrator-8163795.okta.com/oauth2/default/
+      VENDOR_IDP_ISSUER: https://integrator-8163795.okta.com/oauth2/aus10oqaqhv1yjZqy698/
+      RUNTIME_IDP_ISSUER: https://integrator-8163795.okta.com/oauth2/aus10oq9izh5L8rJB698/
+      IDP_ISSUER: https://integrator-8163795.okta.com/oauth2/aus10oq9izh5L8rJB698/
+      IDP_AUDIENCE: api://hub-runtime
+      RUNTIME_API_AUDIENCE: api://hub-runtime
+      ADMIN_API_AUDIENCE: api://default
+      VENDOR_API_AUDIENCE: api://hub-vendor
+      EXECUTE_SCOPE: ""
+      AI_EXECUTE_SCOPE: ""
+      AI_GATEWAY_API_KEY: local-dev
+      AI_GATEWAY_SOURCE_VENDOR: LH001
+      RUNTIME_API_URL: http://localhost:8080
+      ADMIN_REQUIRED_GROUP: admin
+      PHI_APPROVED_GROUP: admin-phi
+      AUTH_BYPASS: "false"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+      start_period: 15s
+

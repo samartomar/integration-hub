@@ -1,0 +1,212 @@
+# Architecture Guardrails
+
+This rule defines implementation patterns that are NOT allowed in this repository.
+
+The agent must refuse or correct implementations that violate these guardrails.
+
+---
+
+# 1 Vendor Identity Rules
+
+Vendor identity must only come from the JWT claim:
+
+bcpAuth
+
+Never derive vendor identity from:
+
+request body
+query parameters
+headers
+path variables
+
+If vendor identity is missing from JWT, the request must be rejected.
+
+---
+
+# 2 Gateway Boundary Rules
+
+The platform uses three logical gateways.
+
+Admin Gateway
+Purpose: governance and configuration
+Endpoints:
+  /v1/registry/**
+  /v1/audit/**
+  /v1/admin/**
+
+Vendor Gateway
+Purpose: vendor self-service
+Endpoints:
+  /v1/vendor/**
+
+Runtime Gateway
+Purpose: execution
+Endpoints:
+  /v1/execute
+  /v1/ai/execute
+
+Endpoints must never appear in the wrong gateway.
+
+Example violations:
+
+❌ exposing /v1/registry on vendor gateway
+❌ exposing /v1/execute on admin gateway
+
+---
+
+# 3 Runtime Safety Rules
+
+Execution flow must always follow:
+
+1 authenticate
+2 resolve vendor identity
+3 enforce allowlist
+4 validate contract
+5 transform payload
+6 call downstream endpoint
+7 validate response
+8 emit audit event
+9 emit usage event
+
+The runtime must never skip:
+
+allowlist validation
+contract validation
+audit emission
+
+---
+
+# 4 PHI Protection Rules
+
+PHI must never be stored in:
+
+usage tables
+billing tables
+metrics tables
+
+Examples of PHI:
+
+memberId
+member name
+DOB
+claim number
+provider identifiers
+
+PHI may only appear in:
+
+data_plane transaction storage
+audit payloads with redaction
+
+Sensitive payload expansion requires:
+
+PHI approved group
+explicit reason
+audit event
+
+Secrets must always remain redacted.
+
+---
+
+# 5 Billing / Usage Rules
+
+Usage events must only contain metadata.
+
+Allowed fields:
+
+vendor_code
+operation_code
+api_surface
+status_code
+latency
+request_bytes
+response_bytes
+ai_tokens_in
+ai_tokens_out
+timestamp
+
+Not allowed:
+
+payloads
+member identifiers
+claim identifiers
+response bodies
+
+Usage emission must be fail-open.
+
+Execution must never fail because usage recording failed.
+
+---
+
+# 6 Repository Structure Rules
+
+The repository is a monorepo.
+
+Backend code must live under:
+
+apps/api
+
+Admin UI must live under:
+
+apps/web-cip
+
+Vendor UI must live under:
+
+apps/web-partners
+
+Do not create directories named:
+
+backend
+frontend
+client
+server
+
+---
+
+# 7 Contract Authority
+
+The canonical contract is defined in:
+
+control_plane.operation_contracts
+
+Vendor overrides may exist in:
+
+control_plane.vendor_operation_contracts
+
+Runtime validation must always use:
+
+vendor override if present
+otherwise canonical contract
+
+---
+
+# 8 Allowlist Authority
+
+Allowed integrations are defined in:
+
+control_plane.vendor_operation_allowlist
+
+If no allowlist entry exists, execution must be denied.
+
+Wildcard access must not be assumed.
+
+---
+
+# 9 AI Formatter Safety
+
+AI formatter may enhance formatting but must never:
+
+change business outcome
+change routing decisions
+skip validation
+
+AI failures must not break execution.
+
+---
+
+# 10 Required Behavior When Guardrails Are Violated
+
+If an implementation request violates any rule above, the agent must:
+
+1 explain the violation
+2 propose the correct architectural solution
+3 refuse unsafe implementation

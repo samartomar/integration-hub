@@ -1,0 +1,65 @@
+# Build stage: unit tests + lint + pre-bundle Lambda assets
+version: 0.2
+
+cache:
+  paths:
+    - '/root/.cache/pip/**/*'
+    - '/root/.npm/**/*'
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.11
+      nodejs: 20
+    commands:
+      - pip install --upgrade pip
+      - pip install -r requirements.txt
+      - pip install -e ".[dev]"
+
+  build:
+    commands:
+      - echo "=== Git source (verify pipeline picked correct ref) ==="
+      - git rev-parse HEAD 2>/dev/null || echo "git not available"
+      - git branch -a 2>/dev/null || true
+      - git log -1 --oneline 2>/dev/null || true
+      - echo "======================================================"
+      - echo "Running lint (ruff)..."
+      - ruff check infra lambdas tooling/scripts apps packages --exclude apps/api/local --exclude tooling/scripts/seed_local.py --exclude tooling/scripts/local_db_init.py --exclude tooling/scripts/seed_get_weather.py --ignore E501 --fix --unsafe-fixes
+      - echo "Running type check (mypy)..."
+      - mypy infra --ignore-missing-imports
+      - echo "Syncing shared modules to ai_tool (before pytest to avoid import path collision)..."
+      - cp apps/api/src/lambda/observability.py lambdas/ai_tool/
+      - cp apps/api/src/lambda/canonical_error.py lambdas/ai_tool/
+      - echo "Running unit tests (pytest)..."
+      - pytest tests/ -v --tb=short
+      - echo "Pre-bundling Lambda assets..."
+      - mkdir -p .bundled/backend-lambda .bundled/ai-tool .bundled/integrationhub-common-layer
+      # Try Docker first (requires privileged mode). Fall back to pip if Docker fails.
+      - |
+        if docker run --rm hello-world >/dev/null 2>&1; then
+          echo "Docker available – using parallel Docker bundling"
+          docker run --rm -v "$(pwd)/packages/lambda-layers/integrationhub-common:/asset-input:ro" -v "$(pwd)/.bundled/integrationhub-common-layer:/asset-output" \
+            -w /asset-input public.ecr.aws/sam/build-python3.11 \
+            bash -c "pip install -r requirements.txt -t /asset-output/python" &
+          docker run --rm -v "$(pwd)/apps/api/src/lambda:/asset-input:ro" -v "$(pwd)/.bundled/backend-lambda:/asset-output" \
+            -w /asset-input public.ecr.aws/sam/build-python3.11 \
+            bash -c "pip install -r requirements.txt -t /asset-output && cp -au /asset-input/. /asset-output/" &
+          docker run --rm -v "$(pwd)/lambdas/ai_tool:/asset-input:ro" -v "$(pwd)/.bundled/ai-tool:/asset-output" \
+            -w /asset-input public.ecr.aws/sam/build-python3.11 \
+            bash -c "pip install -r requirements.txt -t /asset-output && cp -au /asset-input/. /asset-output/" &
+          wait
+        else
+          echo "Docker not available – using pip fallback"
+          pip install -q -r packages/lambda-layers/integrationhub-common/requirements.txt -t .bundled/integrationhub-common-layer/python
+          cp apps/api/src/lambda/observability.py lambdas/ai_tool/
+          cp apps/api/src/lambda/canonical_error.py lambdas/ai_tool/
+          cp -r apps/api/src/lambda/. .bundled/backend-lambda/
+          pip install -q -r apps/api/src/lambda/requirements.txt -t .bundled/backend-lambda
+          cp -r lambdas/ai_tool/. .bundled/ai-tool/
+          pip install -q -r lambdas/ai_tool/requirements.txt -t .bundled/ai-tool
+        fi
+
+artifacts:
+  files:
+    - "**/*"
+  base-directory: .

@@ -1,0 +1,93 @@
+# System Architecture Map — Integration Hub
+
+This rule gives the agent a “map” of the platform so it implements features in the correct place, with correct boundaries, and correct data flow.
+
+## 1) Product boundaries (never blur these)
+
+### Admin Plane (Control Plane)
+- Purpose: governance + onboarding + approvals + visibility (with PHI gating)
+- Writes: control_plane.* (configs) and audit events (governed)
+- Reads: control_plane.*, data_plane.* (summaries), usage.* (aggregates), audit.* (redacted by default)
+
+### Vendor Plane
+- Purpose: vendor configuration + vendor-safe views (no other vendors’ data)
+- Identity: derived only from JWT claim `bcpAuth`
+- Never exposes: other vendors’ config or any admin-only controls
+
+### Runtime Plane (Data Plane)
+- Purpose: execute + ai/execute
+- Must be stable, fast, and fail-open on ancillary systems (usage emission, AI formatter calls, etc.)
+- Identity: derived only from JWT claim `bcpAuth`
+- Never trusts: request body for source vendor identity
+
+## 2) Core subsystems and “where logic lives”
+
+### Canonical Data Model + Contracts
+- Source of truth: control_plane.operations + control_plane.operation_contracts
+- Vendor override: control_plane.vendor_operation_contracts (only when vendor chooses override)
+- Runtime must validate requests against canonical contract unless vendor override is active
+
+### Allowlist / Access Rules
+- Source of truth: control_plane.vendor_operation_allowlist
+- Current policy: explicit allowlist pairs (no wildcard `*`)
+- UI should support bulk creation (multi-source + multi-target)
+
+### Endpoints + Outbound Auth
+- Outbound endpoint: control_plane.vendor_endpoints
+- Endpoint auth linkage: by FK (whatever schema enforces today)
+- Outbound auth types supported: API_KEY_HEADER, API_KEY_QUERY, BASIC, BEARER, JWT, MTLS
+- Endpoint verification must be SSRF-safe and secrets-redacted
+
+### Execution Runtime
+- Entry points: /v1/execute, /v1/ai/execute
+- Must enforce: JWT → vendor identity → allowlist → contract validation → routing → audit
+- Must emit: audit lifecycle events and (if enabled) usage events
+- Must not store PHI in logs; only redacted/audited paths can expose sensitive data
+
+### AI Formatter
+- Triggered only when feature gate + op mode + request flag allow it
+- Deterministic precedence everywhere: GLOBAL_GATE -> OP_MODE -> REQUEST_FLAG -> FORMATTER_CALL
+- AI failure never changes execute outcome; only aiFormatter metadata changes
+
+### Replay Console
+- Admin-only capability with strict audit trail
+- Uses data_plane transactions + audit events; never bypasses allowlist rules
+- Must preserve idempotency semantics
+
+### Flow Builder
+- Admin governance tool to configure operations, allowlist, endpoints, mappings, and approvals
+- Must operate only via control plane APIs and change request workflow where required
+
+### Usage & Billing (Vendor-focused)
+- Identity: vendor is always `bcpAuth`
+- Event emission: fail-open (execution must still succeed)
+- No PHI: usage tables must not include payload/request/response bodies
+
+### PHI / Privacy
+- Default: redact request/response payloads everywhere
+- Expand requires: PHI-approved group + explicit reason + auto-timeout
+- Always redact secrets even in PHI mode
+- Emit audit events when PHI view is enabled and used
+
+## 3) “Routing rules” for implementation (avoid wrong placement)
+
+When the change affects:
+- auth / identity / scopes / audiences → update bcpAuth + gateway config + tests
+- governance / onboarding / approvals → update Admin Plane endpoints + UI + rules
+- runtime behavior (execute / ai/execute) → update Runtime Plane handlers + contract + allowlist + audit tests
+- endpoint auth types → update endpoint resolver + verifier + admin UX help panels
+- seed/demo → update seed_local.py AND ensure migrations are head
+
+## 4) Non-negotiable invariants
+- Vendor A cannot read Vendor B’s config or data (including “debug” views)
+- Source vendor identity is only from JWT `bcpAuth`
+- Contract validation is enforced before routing
+- Allowlist is enforced before routing
+- PHI is redacted by default; expanded only with approval + audit trail
+- AI formatter never becomes required for runtime success
+
+## 5) Agent expectations
+For any feature request:
+- Identify impacted subsystems above
+- Implement end-to-end wiring (DB → backend → UI → tests → rules)
+- Provide a summary of files touched and how the feature obeys invariants

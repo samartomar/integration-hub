@@ -1,0 +1,12 @@
+---
+description: Agent must not modify .cursor rules unless explicitly asked
+alwaysApply: true
+---
+
+# Agent Constraints
+
+## .cursor Rules
+
+- **Do not modify** files in `.cursor/rules/` unless the user **explicitly asks** to create, change, or update a rule.
+- Do not make rule changes, refactors, or "improvements" to rules unprompted.
+- When in doubt, ask before touching any `.cursor/` or `.mdc` file.

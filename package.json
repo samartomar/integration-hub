@@ -1,0 +1,11 @@
+{
+  "name": "integration-hub-poc",
+  "private": true,
+  "description": "Integration Hub POC - Backend, frontend, Postman collections",
+  "scripts": {
+    "dev:vendor:local": "cd apps/web-partners && vite --port 5174",
+    "dev:admin:local": "cd apps/web-cip && vite --port 5173",
+    "dev:admin": "cd apps/web-cip && npm run dev",
+    "dev:partners": "cd apps/web-partners && npm run dev"
+  }
+}

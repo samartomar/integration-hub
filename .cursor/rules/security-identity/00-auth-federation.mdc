@@ -1,0 +1,211 @@
+---
+description: Auth & Federation – Okta as single issuer, vendor_code from claims, outbound auth via profiles
+alwaysApply: true
+---
+
+# Integration Hub — Auth & Federation Rule (Final, Post-Refactor Version)
+**Applies to all APIs (Admin, Vendor, Runtime)**
+
+---
+
+## **1. Single Source of Truth for Identity — `bcpAuth`**
+
+All JWT validation MUST run through a single shared helper:
+
+```
+bcpAuth.validate(token, expectedAudience, {
+    requiredRole,
+    requiredScope,
+    allowVendor: boolean      # Default true
+})
+```
+
+### The helper MUST:
+
+* Verify signature using Okta JWKS (issuer configured via `IDP_ISSUER`)
+* Verify:
+
+  * `iss` matches `IDP_ISSUER`
+  * `aud` matches `expectedAudience`
+  * `exp` & `nbf`
+* Extract **vendor identity**:
+
+  * MUST read claim **`vendor_code`**
+  * No fallback allowed (`lhcode` deleted forever)
+* Expose:
+
+  * `vendor_code`
+  * `subject`
+  * `roles` (groups)
+  * `scopes` (scp)
+* Reject token if:
+
+  * `vendor_code` missing AND `allowVendor` = true
+  * required role missing
+  * required scope missing
+
+### Implementation notes:
+
+* All Lambdas MUST remove their previous JWT-parsing logic.
+* All auth happens through this helper ONLY.
+
+---
+
+## **2. Admin / Vendor / Runtime — Authorization Requirements**
+
+### **Admin API**
+
+* Expected audience: configurable (`ADMIN_API_AUDIENCE`)
+* Required role: configurable (`ADMIN_REQUIRED_ROLE`)
+* Vendor code: optional (`allowVendor=false`)
+* If role missing → **403 FORBIDDEN**
+* If token invalid → **401 UNAUTHORIZED**
+
+### **Vendor API**
+
+* Expected audience: configurable (`VENDOR_API_AUDIENCE`)
+* Required role: none
+* Vendor identity: **MUST** be derived from token
+* Body-provided vendor must be ignored or rejected; preferred behavior:
+
+  * **Reject mismatches** with `403 VENDOR_SPOOF_BLOCKED`
+
+### **Runtime `/v1/execute`**
+
+* Expected audience: `RUNTIME_API_AUDIENCE`
+* Required scope:
+
+  * Execute: `EXECUTE_SCOPE` env var
+* Vendor identity:
+
+  * Always from token
+  * Never from body
+
+### **Runtime `/v1/ai/execute`**
+
+* Expected audience: `RUNTIME_API_AUDIENCE`
+* Required scope:
+
+  * AI Execute: `AI_EXECUTE_SCOPE`
+* Vendor identity:
+
+  * Always from token
+
+---
+
+## **3. Audience Contract**
+
+Today all APIs use:
+
+```
+audience = "api://default"
+```
+
+This is acceptable, but code MUST support future split:
+
+* Admin API → `ADMIN_API_AUDIENCE`
+* Vendor API → `VENDOR_API_AUDIENCE`
+* Runtime API → `RUNTIME_API_AUDIENCE`
+
+These values MUST be configurable through environment variables and NEVER hardcoded.
+
+---
+
+## **4. Federation Model**
+
+* Integration Hub trusts only **your Okta tenant** as IdP.
+* Vendor IdPs (Auth0, Azure AD, Ping, etc.) federate **into Okta**, not into Hub directly.
+* All vendor identities MUST arrive normalized with:
+
+```
+vendor_code = "<LH001 or equivalent>"
+```
+
+Vendor IDP → Okta mapping MUST add this claim.
+
+Hub must never accept external JWTs (vendor IdP) directly.
+
+---
+
+## **5. Outbound Authentication**
+
+Normalize all outbound `auth_profiles.auth_type` to:
+
+```
+API_KEY_HEADER
+API_KEY_QUERY
+BASIC
+BEARER
+JWT
+MTLS
+```
+
+No backward compatibility needed.
+Mapping logic in runtime MUST support these and only these.
+
+Tests MUST validate:
+
+* Proper header/query generation per profile
+* Invalid profiles are rejected at config time
+
+---
+
+## **6. Dev-Only Bypass Rules**
+
+The following are allowed ONLY when `ENVIRONMENT=dev`:
+
+* Token bypass flags
+* Auto-vendor injection
+* Local-only hardcoded tokens
+
+If any bypass flag is enabled in non-dev → **startup failure**.
+
+---
+
+## **7. Required Security Tests**
+
+### **Issuer / Audience tests**
+
+* Wrong issuer → 401
+* Wrong audience → 401
+
+### **Role / Scope tests**
+
+* Admin token missing admin role → 403
+* Runtime token missing required scope → 403
+
+### **Vendor spoof tests**
+
+* Body specifies vendor_code ≠ token → 403
+
+### **Outbound profile tests**
+
+For seeded ops:
+
+* Profile = API_KEY_HEADER → header present
+* Profile = BASIC → correct base64 auth header
+* etc.
+
+### **Happy path tests**
+
+* `/v1/execute` returns success end-to-end with correct vendor identity and outbound auth
+* `/v1/ai/execute` returns AI + raw data per mode
+
+---
+
+## **8. Gateway Boundary Invariants**
+
+Gateway boundaries are strict and must not overlap:
+
+* `/v1/registry/**`:
+  * Exposed on **Admin API Gateway** only
+  * Validated against `ADMIN_API_AUDIENCE`
+  * Requires admin authorization policy (role/group)
+* `/v1/vendor/**`:
+  * Exposed on **Vendor API Gateway** only
+  * Validated against `VENDOR_API_AUDIENCE`
+* `/v1/execute` and `/v1/ai/execute`:
+  * Exposed on **Runtime API Gateway** only
+  * Validated against `RUNTIME_API_AUDIENCE` (+ required scopes when configured)
+
+No gateway may proxy or "borrow" endpoints from another boundary.

@@ -1,0 +1,49 @@
+---
+description: AI formatter governance
+alwaysApply: true
+---
+
+# AI Formatter Rule
+
+AI formatting is optional and governed by feature gates.
+
+## Gate precedence
+1. Vendor-specific gate
+2. Global gate
+3. Disabled
+
+Gate key: `ai_formatter_enabled`
+
+## Decision order
+
+1. Feature gate
+2. Operation mode
+3. Request flag
+4. Formatter execution
+
+## Operation modes
+- RAW_ONLY
+- RAW_AND_FORMATTED
+- FORMAT_ONLY
+
+Unknown mode → treat as RAW_ONLY.
+
+## Response contract
+
+aiFormatter fields:
+- applied
+- reason
+- mode
+- model
+- formattedText
+
+Allowed reason values:
+- FEATURE_DISABLED
+- MODE_RAW_ONLY
+- REQUEST_DISABLED
+- FORMATTER_ERROR
+- APPLIED
+
+## Safety rules
+
+Formatter failures must not affect execution result.

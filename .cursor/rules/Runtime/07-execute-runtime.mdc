@@ -1,0 +1,12 @@
+---
+description: Runtime execute invariants and centralized policy usage
+globs: backend/lambda/routing_lambda.py backend/lambda/policy_engine.py tests/test_routing_lambda.py tests/test_policy_engine.py
+alwaysApply: false
+---
+
+# Execute Runtime
+
+- `POST /v1/integrations/execute` enforcement must call `evaluate_policy(...)` before runtime execution.
+- Keep allowlist, spoof prevention, and PHI/admin policy gates in policy engine; avoid duplicate inline policy branches.
+- AI formatter checks are informational and must not change execute allow/deny outcome.
+- Preserve existing runtime semantics when refactoring policy checks (no hidden behavior changes).

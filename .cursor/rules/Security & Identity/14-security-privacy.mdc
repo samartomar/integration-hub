@@ -1,0 +1,40 @@
+---
+description: Security and privacy invariants for runtime and audit policy checks
+globs: apps/api/src/lambda/**/*.py tests/**/*.py
+alwaysApply: false
+---
+
+# Security & Privacy
+
+## Policy Engine
+
+- Route access decisions through `apps/api/src/lambda/policy_engine.py` instead of adding inline allow/deny branches.
+- Keep policy outputs deterministic: `allow`, `decision_code`, `http_status`, `message`, and safe `metadata`.
+- Never include PHI/PII in policy metadata, error messages, or logs.
+- Gate sensitive audit expansion (`expandSensitive`) with `PHI_APPROVED_GROUP` checks through the policy engine.
+
+## Policy Decision Logging
+
+- All allow/deny decisions MUST originate from `policy_engine`.
+- Decisions SHOULD be logged for observability via `policy.policy_decisions`.
+- Logged records MUST NOT include request/response payloads.
+- Logged records MUST NOT include PHI/PII.
+
+## Mission Control
+
+- Mission Control views in Admin UI must remain metadata-only.
+- Mission Control must never return, log, or render request/response payload content or PHI/PII.
+
+## Mission Control Observability
+
+- Mission Control endpoints must never return request or response payloads.
+- Only metadata fields are allowed (for example: `vendorCode`, `operationCode`, `decisionCode`, `statusCode`).
+- Activity feed must be admin-only.
+- Real-time polling must enforce lookback limits.
+
+
+## Policy Simulation
+
+- Policy simulation must never execute integrations.
+- Policy simulation must never log decisions.
+- Policy simulation must require admin access.

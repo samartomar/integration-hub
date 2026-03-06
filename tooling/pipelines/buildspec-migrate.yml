@@ -1,0 +1,104 @@
+# Migrate stage: Alembic migrations (CodeBuild in VPC, direct Aurora access)
+# Receives .bundled from Build stage (no Docker in VPC)
+version: 0.2
+
+cache:
+  paths:
+    - '/root/.cache/pip/**/*'
+    - '/root/.npm/**/*'
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.11
+      nodejs: 20
+    commands:
+      - pip install --upgrade pip
+      - pip install -e .
+      - pip install alembic psycopg2-binary
+      - npm install -g aws-cdk
+
+  pre_build:
+    commands:
+      - echo "Resolving DB connection from CloudFormation..."
+      - |
+        DB_SECRET_ARN=$(aws cloudformation describe-stacks --stack-name DatabaseStack \
+          --query "Stacks[0].Outputs[?OutputKey=='SecretArn'].OutputValue" --output text 2>/dev/null || echo "")
+        DB_HOST=$(aws cloudformation describe-stacks --stack-name DatabaseStack \
+          --query "Stacks[0].Outputs[?OutputKey=='Endpoint'].OutputValue" --output text 2>/dev/null | tr -d '[:space:]')
+        DB_NAME=$(aws cloudformation describe-stacks --stack-name DatabaseStack \
+          --query "Stacks[0].Outputs[?OutputKey=='DatabaseName'].OutputValue" --output text 2>/dev/null | tr -d '[:space:]' || echo "integrationhub")
+        echo "export DB_SECRET_ARN=$DB_SECRET_ARN" >> db_env.sh
+        echo "export DB_HOST=$DB_HOST" >> db_env.sh
+        echo "export DB_PORT=5432" >> db_env.sh
+        echo "export DB_NAME=${DB_NAME:-integrationhub}" >> db_env.sh
+      - . ./db_env.sh
+      - |
+        if [ -z "$DB_SECRET_ARN" ] || [ "$DB_SECRET_ARN" = "None" ]; then
+          echo "ERROR: DatabaseStack not deployed or SecretArn not found"
+          exit 1
+        fi
+      - echo "DB_HOST resolved"
+
+  build:
+    commands:
+      - echo "=== Git source (verify pipeline picked correct ref) ==="
+      - git rev-parse HEAD 2>/dev/null || echo "git not available"
+      - git log -1 --oneline 2>/dev/null || true
+      - echo "======================================================"
+      - . ./db_env.sh
+      - echo "Running Alembic migrations..."
+      - python tooling/scripts/run_migrations.py
+      - echo "Migrations completed."
+      - |
+        if [ ! -d .bundled/backend-lambda ] || [ ! -d .bundled/ai-tool ] || [ ! -d .bundled/integrationhub-common-layer ]; then
+          echo "Pre-bundling Lambda assets (Build did not provide them)..."
+          mkdir -p .bundled/backend-lambda .bundled/ai-tool .bundled/integrationhub-common-layer
+          pip install -q -r packages/lambda-layers/integrationhub-common/requirements.txt -t .bundled/integrationhub-common-layer/python
+          cp apps/api/src/lambda/observability.py lambdas/ai_tool/
+          cp apps/api/src/lambda/canonical_error.py lambdas/ai_tool/
+          cp -r apps/api/src/lambda/. .bundled/backend-lambda/
+          pip install -q -r apps/api/src/lambda/requirements.txt -t .bundled/backend-lambda
+          cp -r lambdas/ai_tool/. .bundled/ai-tool/
+          pip install -q -r lambdas/ai_tool/requirements.txt -t .bundled/ai-tool
+        else
+          echo "Using pre-bundled Lambda assets from Build stage"
+        fi
+      - echo "Deploying CDK stacks..."
+      - export USE_PREBUNDLED=1
+      # Single source of truth: packages/env-config/env-config.json (always picked up)
+      - eval $(python tooling/scripts/load_env_config.py)
+      - |
+        # Stack list; add PortalStack when CustomDomainRoot set (from packages/env-config)
+        DEV_STACKS="FoundationStack DatabaseStack OpsAccessStack DataPlaneStack PipelineStack ProdPipelineStack"
+        CDK_OPTS="--require-approval never --no-notices --verbose"
+        CDK_OPTS="$CDK_OPTS $(python tooling/scripts/load_env_config.py --cdk)"
+        if [ -n "$CUSTOM_DOMAIN_ROOT" ]; then
+          DEV_STACKS="$DEV_STACKS PortalStack"
+          echo "Custom domains enabled: $CUSTOM_DOMAIN_ROOT (dev)"
+        fi
+        echo "Deploying with Okta JWT auth"
+        cdk deploy $DEV_STACKS $CDK_OPTS
+      - |
+        if [ -n "$CUSTOM_DOMAIN_ROOT" ]; then
+          echo "Deploying portal assets to S3 (PortalStack in us-east-1)..."
+          eval $(python tooling/scripts/load_env_config.py -v)
+          cd packages/ui-shared && npm install && cd ../..
+          cd apps/web-cip && npm install && npm run build && cd ../..
+          cd apps/web-partners && npm install && npm run build && cd ../..
+          # apps/web-cip (admin) -> cip.dev.* / apps/web-partners -> partners.dev.*
+          ADMIN_BUCKET=$(aws cloudformation describe-stacks --stack-name PortalStack --region us-east-1 --query "Stacks[0].Outputs[?OutputKey=='AdminPortalBucketName'].OutputValue" --output text)
+          VENDOR_BUCKET=$(aws cloudformation describe-stacks --stack-name PortalStack --region us-east-1 --query "Stacks[0].Outputs[?OutputKey=='VendorPortalBucketName'].OutputValue" --output text)
+          ADMIN_DIST=$(aws cloudformation describe-stacks --stack-name PortalStack --region us-east-1 --query "Stacks[0].Outputs[?OutputKey=='AdminPortalDistributionId'].OutputValue" --output text)
+          VENDOR_DIST=$(aws cloudformation describe-stacks --stack-name PortalStack --region us-east-1 --query "Stacks[0].Outputs[?OutputKey=='VendorPortalDistributionId'].OutputValue" --output text)
+          aws s3 sync apps/web-cip/dist s3://$ADMIN_BUCKET --delete --region us-east-1
+          aws s3 sync apps/web-partners/dist s3://$VENDOR_BUCKET --delete --region us-east-1
+          aws cloudfront create-invalidation --distribution-id $ADMIN_DIST --paths "/*"
+          aws cloudfront create-invalidation --distribution-id $VENDOR_DIST --paths "/*"
+          echo "Portal assets deployed."
+        fi
+
+artifacts:
+  files:
+    - "**/*"
+  base-directory: .

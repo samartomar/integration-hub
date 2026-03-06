@@ -1,0 +1,180 @@
+---
+description: Definitive Git & Cursor workflow rules for branch integrity, patch management, and commit standards.
+globs: ["**/*"]
+alwaysApply: true
+---
+
+# Git Workflow Rules (Cursor-Aware)
+
+## 1. Core Philosophy: Branch Integrity
+
+- **PR-Only Main:** Never modify `main` directly. All changes must land through pull requests.
+- **Source of Truth:** The **currently checked-out branch** and its uncommitted changes are the primary context.
+- **Co-Working Mindset:** Always build on the developer's local implementation. If a conflict arises between AI suggestions and local code, prioritize the developer’s current direction.
+- **Persistence:** Maintain focus on the active branch across prompts. Never revert to `main` unless explicitly instructed.
+
+---
+
+# 2. Branch & Worktree Safety
+
+- **Default Behavior:** Always operate on the **current branch**.
+- **No Shadow Branches:** Do not create branches like `cursor-*` unless the user explicitly asks.
+- **No Stranded Work:** If Cursor uses an internal worktree or temporary state, it **must apply the final patch back to the user’s active branch** before finishing.
+- **No History Rewrites:** Never suggest `rebase` or `force-push` unless the user explicitly asks.
+
+If the user says any of the following:
+
+- "Apply this to my branch"
+- "Bring it to local"
+- "Commit this"
+- "Lock this in"
+
+Treat it as:
+
+> Apply all pending patches to the active branch and prepare a commit.
+
+---
+
+# 3. Incremental Patch Workflow
+
+Prefer **small, focused patches** over large refactors.
+
+Example patch grouping:
+
+- Auth helper refactor
+- Policy engine enforcement
+- AI formatter wiring
+- Seed data updates
+
+Rules:
+
+- Keep patches logically grouped.
+- Avoid mixing unrelated changes (infra + UI + docs).
+- Maintain readable diffs for code review.
+
+When a task is marked complete:
+
+1. Ensure changes exist in the real working tree.
+2. Sync all internal patches to the active branch.
+3. Confirm the working tree is ready for review.
+
+---
+
+# 4. Commit Standards (Conventional)
+
+Use **Conventional Commits**.
+
+Format:
+<type>(<scope>): <description>
+
+Types:
+
+- feat
+- fix
+- refactor
+- docs
+- test
+- chore
+- perf
+
+Examples:
+feat(auth): add bcpAuth helper and central JWT validation
+fix(runtime): block vendor spoof using token identity
+refactor(policy): centralize decision evaluation
+chore(seed): add mock payer endpoints
+
+Rules:
+
+- Imperative mood ("add", not "added")
+- ≤ 72 characters in subject
+- One commit per logical change
+
+Large refactors may be grouped into **one alignment commit** if the user prefers.
+
+---
+
+# 5. Validation & Safety
+
+Before marking a task complete:
+
+- Suggest the **smallest relevant test command**:
+
+Example:
+python -m pytest tests/test_auth.py
+
+Rules:
+
+- Never fake test results.
+- If tests were not executed, explicitly say:
+
+> Tests NOT run.
+
+If local services may be affected (DB, env vars, infra):
+
+Warn the user to run:
+make local-up
+make local-sync-db
+
+
+---
+
+# 6. Sensitive Data Protection
+
+If the AI detects changes involving:
+
+- `.env`
+- secrets
+- API keys
+- tokens
+
+It must:
+
+- Warn the user
+- Suggest adding them to `.gitignore`
+- Never include them in commits
+
+---
+
+# 7. Communication Protocol
+
+Before large patches:
+
+Provide a short **Plan of Action**:
+
+- What will change
+- Which files are affected
+- Expected impact
+
+After finishing:
+
+Report:
+Changes applied to branch <branch-name>.
+Working tree ready for review/commit.
+
+
+---
+
+# 8. Security Refactor Commit Guidance
+
+Large security or authentication boundary changes should:
+
+- Prefer **one cohesive alignment commit**
+- Avoid mixing lint/format sweeps with security logic
+- Ensure patches are fully applied to the active branch before completion
+
+Safety principles:
+
+- Favor fewer branches
+- Explicit patch application
+- Clear commit history
+
+## 9. Detached HEAD Protection
+
+If the repository is in a detached HEAD state:
+
+1. Cursor must create a branch before modifying files.
+2. Example:
+
+git switch -c fix/<topic>
+
+Never perform edits while detached.

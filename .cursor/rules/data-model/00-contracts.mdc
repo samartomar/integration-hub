@@ -1,0 +1,19 @@
+---
+description: Contract loading, invariants, and fallback rules
+alwaysApply: true
+---
+
+# Contracts Rules
+
+## Invariants
+- A vendor contract may override canonical **per direction** (OUTBOUND/INBOUND).
+- If vendor contract does not exist → **canonical contract is used**.
+- If neither exists → return error `CONTRACT_NOT_FOUND`.
+
+## Behavior
+- Use `load_effective_contract(flow_direction)` everywhere.
+- Do not load contracts directly from tables without direction resolution.
+
+## Validation
+- Request/response payloads must validate against the **effective** contract.
+- When canonical-only and no mapping exists, request may still pass via **canonical pass-through**.

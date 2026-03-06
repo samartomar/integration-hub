@@ -1,0 +1,29 @@
+---
+description: Endpoint selection & resolution rules
+alwaysApply: true
+---
+
+# Endpoint Rules
+
+## Resolution
+- Always use `load_effective_endpoint(operation, vendor, flow_direction)`.
+- Only consider endpoints where `is_active = true`.
+- Uniqueness: one active endpoint per `(vendor_code, operation_code, flow_direction)` — use UPSERT.
+
+## Direction
+- OUTBOUND: vendor → external
+- INBOUND: external → vendor
+
+## verification_status Lifecycle
+- PENDING (default): not yet verified
+- VERIFIED: verification succeeded
+- FAILED: verification attempted and failed
+- When url/http_method/payload_format changes → reset to PENDING
+
+## Auth Profile
+- `auth_profile_id` is optional. When provided, must reference a valid auth profile for the vendor.
+- If endpoint requires auth, `auth_profile_id` must be set (no schema enforcement; validate at application layer when known).
+
+## Errors
+- No endpoint for direction → `ENDPOINT_NOT_FOUND`.
+- Endpoint health does not block execution unless explicitly gated.

@@ -1,0 +1,13 @@
+# Cursor Rules Bundle (cleaned)
+
+## How to use
+
+1. Copy this folder into your repo at:
+   - `.cursor/rules/`
+
+2. Restart Cursor (or reload the workspace) so it re-indexes rules.
+
+## Notes
+
+- Empty/deprecated placeholder files were removed.
+- Any non-empty `.md` files were normalized to `.mdc` for consistency.

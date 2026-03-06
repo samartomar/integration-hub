@@ -1,0 +1,27 @@
+---
+description: Access rules determining which vendor may call which vendor
+alwaysApply: true
+---
+
+# Allowlist & Access
+
+## Access Matrix
+- Access is determined by rules:
+  - `(source_vendor, target_vendor, operation)`
+- Explicit pairs only. Wildcards are not allowed.
+
+## My-Allowlist
+- OUTBOUND: vendor is **source**. Rules: `flow_direction IN ('OUTBOUND','BOTH')`.
+- INBOUND: vendor is **target**. Rules: `flow_direction IN ('INBOUND','BOTH')`.
+
+## Effective Access
+- Access depends on:
+  - Direct rule
+  - Admin gating/approval status
+
+## Source of Truth
+- **Allowlist + canonical contract** = source of truth for routing/execute decisions.
+- **vendor_supported_operations** = capability listing only (UI, flow-builder eligibility). Do not use for access decisions.
+
+## Errors
+- If outbound blocked → `ACCESS_DENIED`.

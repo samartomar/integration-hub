@@ -1,0 +1,50 @@
+---
+description: AI Gateway (PROMPT + DATA modes)
+alwaysApply: true
+---
+
+# AI Gateway Rules
+
+## Modes
+- `DATA`: calls Runtime `/v1/execute`
+- `PROMPT`: calls Bedrock Agent (via agent-alias ARN)
+
+## Formatter Controls
+- Global gate: `control_plane.feature_gates.feature_code='ai_formatter_enabled'`.
+- Operation mode (`control_plane.operations.ai_presentation_mode`) must resolve to:
+  - `RAW_ONLY`
+  - `RAW_AND_FORMATTED`
+- `FORMAT_ONLY` is deprecated and must not be written by UI/API.
+- Request-level toggle for DATA flow: `aiFormatter` boolean.
+
+## Decision Order
+1. Global gate
+2. Operation mode
+3. Request `aiFormatter`
+4. Model invocation
+
+For DATA:
+- If any of (1)-(3) disables formatter, do not call Bedrock and return canonical `rawResult`.
+- `aiFormatter.applied=false` with reason (`FEATURE_DISABLED` | `MODE_RAW_ONLY` | `REQUEST_DISABLED`).
+
+For PROMPT:
+- Global gate applies too.
+- If disabled, do not call Bedrock and return:
+  - `error.code='AI_DISABLED'`
+  - `aiFormatter.reason='FEATURE_DISABLED'`
+
+## IAM
+- Must grant `bedrock:InvokeAgent` on agent-alias, not agent.
+
+## Behavior
+- Return structured envelope including:
+  - rawResult
+  - aiFormatter metadata
+  - finalText (for PROMPT)
+  - canonical error block
+- AI formatter must run only over canonical response shapes, never vendor-specific payloads.
+- AI formatter failures never change execute truth result; they only change `aiFormatter` metadata.
+
+## Auth
+- AI Gateway trusts JWT from API Gateway.
+- Internal calls use internal secrets/IAM, never vendor identity.

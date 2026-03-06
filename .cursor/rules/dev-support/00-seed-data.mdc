@@ -1,0 +1,16 @@
+---
+description: Seed data rules (local dev only)
+alwaysApply: true
+---
+
+# Seed Data Rules
+
+## Scope
+- Local dev only: `tooling/scripts/seed_local.py`, `tooling/scripts/local_seed.sql`, `tooling/scripts/local_db_init.py`
+- Do not use seed data for auth/access decisions in production.
+
+## Invariants
+- Seed must align with baseline schema (`apps/api/migrations/`).
+- Vendors, operations, allowlist, endpoints, and API keys used by local tests must be consistent with backend expectations.
+- Feature gates required by active UI/API behavior must be seeded explicitly (including `ai_formatter_enabled` with `vendor_code=NULL`).
+- Do not rely on UI fallbacks/workarounds to display missing gate rows.

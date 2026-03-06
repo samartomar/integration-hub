@@ -1,0 +1,20 @@
+Branch Workflow Rules
+
+This repository uses the following branch strategy:
+
+main → stable release branch
+develop → integration branch
+futurebranch → feature development
+
+Rules:
+
+Never modify main directly.
+
+Feature work must be done on:
+futurebranch
+
+Changes must flow:
+
+futurebranch → develop → main
+
+When implementing features, assume code is being written on futurebranch.

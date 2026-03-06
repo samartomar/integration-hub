@@ -1,0 +1,56 @@
+---
+description: High-level business + product vision for Integration Hub. Sits above all technical rules.
+alwaysApply: true
+---
+
+# Integration Hub – Vision Document
+
+## Purpose
+The Integration Hub centralizes how partners and internal/external systems exchange data. Instead of every vendor integration becoming a costly custom project, the Hub provides a consistent contract-driven framework that validates data, governs access, logs every action, and ensures trustworthy interoperability at scale.
+
+The Hub reduces onboarding time, increases reliability, and provides a unified governance layer for all partner-facing transactions.
+
+---
+
+## Personas
+
+### Admin (Platform Owner / Governance)
+- Defines canonical models and global standards.
+- Approves or rejects vendor-proposed changes.
+- Establishes who may call whom, in which directions.
+- Monitors operations, health, audits, and compliance.
+
+### Vendor (Partner Developer / Integrator)
+- Configures how their system interacts with the Hub.
+- Provides endpoint, mapping, and optional contract overrides.
+- Tests and validates without impacting others.
+
+### Runtime Caller (Apps, internal services, AI)
+- Sends canonical-form requests.
+- Receives canonical-form responses.
+- Does not need to understand vendor-specific formats.
+
+---
+
+## Key Flows
+
+### Vendor Onboarding
+Vendor configures supported operations, endpoint definitions, and mappings.  
+Admin approves changes. Vendor becomes production-ready.
+
+### Execution Flow
+Runtime caller sends a canonical request.  
+Hub validates, transforms, routes to vendor, normalizes the response, and returns a canonical response with full audit logging.
+
+### Governance Flow
+Admin defines canonical models, access rules, and global constraints.  
+Admin observes metrics, audits, and redrives failures.
+
+---
+
+## Non-Goals
+- Not an ETL or data sync platform.  
+- Not a low-code automation tool.  
+- Not a mechanism for cross-vendor data visibility.  
+- Not designed for bulk transfer or batch pipelines.  
+- Not intended to replace identity, billing, or compliance systems — it integrates with them.

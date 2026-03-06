@@ -1,0 +1,27 @@
+---
+description: Local development setup and invariants
+alwaysApply: true
+---
+
+# Local Dev Rules
+
+## Stack
+- Local uses:
+  - Docker Postgres
+  - Local Uvicorn backend
+  - Local portals (Vite)
+  - Local JWT signer or Auth0 dev tenant
+
+## Commands
+- `make local-up` — DB + hub-api + vendor-mock
+- `make local-down`
+- `make local-sync-db` (alembic upgrade + seed)
+- `make install-ui` — npm install for apps + packages
+- `make dev-admin` — Admin portal (apps/web-cip, port 5173)
+- `make dev-partners` — Vendor portal (apps/web-partners, port 5174)
+- `make build-ui` — Build both portals
+
+## Invariants
+- Local behavior must match prod semantics:
+  - JWT auth
+  - Same execute pipeline

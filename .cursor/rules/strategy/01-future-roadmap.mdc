@@ -1,0 +1,75 @@
+---
+description: Future roadmap considerations for the Integration Hub. Non-blocking guidance that helps Cursor make forward-compatible decisions.
+alwaysApply: false
+---
+
+# Future Roadmap Considerations  
+(Use these when designing or refactoring code paths)
+
+## 1. Identity & Access (Upcoming Direction)
+- Prefer **JWT-based identity** over any vendor-supplied identifiers.  
+- Always design with **multi-IDP support in mind**.
+- Do not assume static vendor identity — long term, identities may expire, rotate, or inherit enterprise hierarchy.
+
+## 2. Vendor Experience Enhancements
+- Vendor Portal will transform into a **real-time interface** with auto-refresh and live readiness updates.  
+
+## 3. Contracts & Versions
+- Canonical contract is always the **primary root**; vendor overrides are optional.  
+- Long-term design should allow:
+  - Contract version negotiation  
+  - Multi-version coexistence  
+  - Auto-migration support  
+- Never assume “v1 only”; new work should allow versioning without breaking changes.
+
+## 4. Mappings & Transformations
+- Canonical pass-through should remain the default; transformations optional.  
+- Future features may include:
+  - Mapping templates or generators  
+  - AI-assisted mapping suggestions  
+  - Pre-compiled/high-performance mapping execution  
+- Avoid designing brittle mapping loaders — keep them extensible.
+
+## 5. Allowlist Access Logic
+- Outbound/inbound separation remains an invariant.  
+- Wildcard behavior should remain explicit and predictable.  
+- Admin override will always be the highest authority; vendor cannot bypass gating.  
+- Expect more granular rules later (operation groups, conditional flows, throttling).
+
+## 6. Runtime & Execution Model
+- Runtime API will eventually support:
+  - Async flows  
+  - Multi-hop vendor → hub → vendor chains  
+  - Optional retries & dead-letter queues  
+- Prefer designs that allow injecting alternative execution backends.  
+- Avoid tight coupling between runtime execution and UI behavior.
+
+## 7. AI Formatter & Bedrock Evolution
+- Formatter must remain pluggable (Bedrock today, future providers later).  
+- Avoid hardcoding model IDs, provider names, or capabilities.  
+- Expect later support for:
+  - AI enrichment  
+  - Normalization  
+  - Summaries for audit and compliance  
+- Design pathways so AI is **optional**, not required.
+
+## 8. Observability & Governance
+- Future roadmap includes:
+  - Full audit timeline per transaction  
+  - Vendor-facing performance analytics  
+  - Usage metering tied to vendor identity  
+- Avoid patterns where metrics are embedded across code; prefer centralized logging utilities.
+
+## 9. Scalability & Partitioning
+- Vendor isolation must remain strong; future sharding strategies may divide vendors by region or tier.  
+- Avoid code that assumes a single database or single region.  
+- All new features should be region-agnostic.
+
+## 10. Feature Flags / Gates
+- All new features should be shipped behind **feature gates**.  
+- Gates must always be **DB-driven** and **editable by Admin**, not code constants.  
+- Avoid wiring new features directly into UI without gating capability.
+---
+
+Use this rule as “soft guidance” when Cursor assists with new features.  
+New rules can be added freely — this file is intentionally lightweight and future-compatible.

@@ -1,0 +1,26 @@
+---
+description: Infra auto-wiring & CI/CD behavior rules
+alwaysApply: true
+---
+
+# Infra & CI/CD Rules
+
+## Auto Wiring
+- CDK must supply every Lambda with:
+  - Custom domains
+  - Runtime API URL
+  - Admin API URL
+  - Vendor API URL
+  - Bedrock agent/alias IDs
+  - JWT issuer/audience
+
+## Pipelines
+- Migrate DB via Alembic before deploying lambdas.
+- Strict: no manual copying of ARNs, IDs, URLs.
+- All env must derive from CDK outputs & SSM/Secrets Manager.
+
+## Stacks
+- Core stacks:
+  - DataPlaneStack
+  - RuntimeApiStack
+  - PortalStack

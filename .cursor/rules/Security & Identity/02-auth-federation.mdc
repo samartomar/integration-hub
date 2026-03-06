@@ -1,0 +1,12 @@
+---
+description: Authentication and vendor identity federation invariants
+globs: backend/lambda/**/*.py tests/**/*.py
+alwaysApply: false
+---
+
+# Auth Federation
+
+- Vendor identity must come from authenticated identity context, not request body fields.
+- Use `IDP_VENDOR_CLAIM` as the vendor claim source (default `bcpAuth` in policy decisions unless overridden by environment).
+- Policy checks must block source-vendor spoof attempts when body/source input disagrees with authenticated vendor.
+- Keep admin endpoint enforcement centralized through policy helpers and JWT (admin role) validation; no x-admin-secret.

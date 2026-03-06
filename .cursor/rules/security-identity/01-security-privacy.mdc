@@ -1,0 +1,36 @@
+---
+description: Security & privacy guardrails for sensitive payload handling and PHI access
+alwaysApply: true
+---
+
+# Security & Privacy Rules
+
+## Default Redaction Policy
+- Sensitive request/response payload content must be redacted by default in APIs and UI.
+- Redaction must include sensitive headers and fields (for example: `authorization`, api-key headers, `x-admin-secret`, `cookie`, `client_secret`, `private_key`, tokens, passwords, PII/PHI identifiers).
+- Redaction logic should be centralized and reused; avoid endpoint-specific ad-hoc masking.
+
+## PHI-Approved Expansion Policy
+- Expanded sensitive payload viewing is opt-in and gated.
+- Expanded payload is allowed only when all are true:
+  - Caller is in `PHI_APPROVED_GROUP`
+  - Request explicitly asks for expansion (for example `expandSensitive=true`)
+  - Request context is auditable (user identity + reason when provided)
+- Without PHI approval, expanded sensitive responses must return `403 FORBIDDEN`.
+
+## Secrets Never Returned
+- Secret values are never returned to UI, even in expanded mode.
+- Always redact credential-bearing keys and auth material (`authorization`, bearer tokens, api keys, private keys, secrets, mtls cert/key content).
+
+## Audit Requirements
+- Sensitive-access flows must emit audit events:
+  - `PHI_VIEW_ENABLED`
+  - `PHI_VIEWED_TRANSACTION`
+  - `PHI_EXPORT_REQUESTED`
+- Audit events should include actor identity (`sub`), relevant groups, timestamp, request reason (if supplied), and target entity (transaction id, export id, etc.).
+
+## UI Requirements
+- UI must default to restricted/redacted mode.
+- UI may show a PHI toggle only for PHI-approved users.
+- When PHI mode is enabled, UI should show a clear warning banner that access is audited.
+- Do not persist PHI-expanded mode in long-lived local storage by default.

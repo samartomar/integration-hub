@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "poc-py"
+version = "0.1.0"
+description = "AWS CDK v2 Python application"
+requires-python = ">=3.11"
+dependencies = [
+    "aws-cdk-lib>=2.100.0",
+    "constructs>=10.0.0",
+    "PyJWT>=2.8.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "alembic>=1.13.0",
+    "boto3>=1.28.0",
+    "fastapi>=0.100.0",
+    "httpx>=0.25.0",
+    "jsonschema>=4.20.0",
+    "psycopg2-binary>=2.9.0",
+    "pytest>=7.0",
+    "mypy>=1.0",
+    "requests>=2.31.0",
+    "ruff>=0.1",
+    "uvicorn>=0.22.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["infra*", "lambdas*", "schemas*", "ai*", "backend*"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "infra.*"
+# CDK type stubs vary by version; relax checks to avoid CI failures
+disable_error_code = ["arg-type", "union-attr", "attr-defined", "no-untyped-def"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+exclude = [
+    "apps/api/local",
+    "tooling/scripts/seed_local.py",
+    "tooling/scripts/local_db_init.py",
+    "tooling/scripts/seed_get_weather.py",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]

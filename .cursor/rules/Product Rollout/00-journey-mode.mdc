@@ -1,0 +1,25 @@
+# Journey Mode – Product Rollout
+
+## Canonical Feature Codes
+- `home_welcome`
+- `registry_basic`
+- `execute_test`
+- `audit_view`
+- `flow_builder`
+- `mappings_ui`
+- `governance_allowlist`
+- `approvals`
+- `replay_console`
+- `ai_formatter_ui`
+- `usage_billing_ui`
+
+## Invariants
+- Missing flag MUST be treated as disabled.
+- Do not use hardcoded `demoMode` booleans for rollout behavior.
+- Vendor APIs/UI are read-only for platform rollout state; no vendor writes.
+- UI enablement MUST come from rollout APIs, not local hardcoded enablement lists.
+
+## UI Rules
+- Route guards must show a friendly "not enabled in current rollout phase" state.
+- Deep links to disabled routes must not crash or render blank pages.
+- Unknown feature codes should be ignored by UI mapping and treated as disabled.

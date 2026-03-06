@@ -1,0 +1,1 @@
+# Shared deps (jsonschema, psycopg2-binary) come from integrationhub-common Lambda layer.

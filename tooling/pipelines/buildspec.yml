@@ -1,0 +1,30 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.11
+      nodejs: 20
+    commands:
+      - pip install --upgrade pip
+      - pip install -r requirements.txt
+      - npm install -g aws-cdk
+
+  pre_build:
+    commands:
+      - echo "Running pre-build validation..."
+      - cdk --version
+
+  build:
+    commands:
+      - echo "Synth CDK application..."
+      - cdk synth --all
+
+  post_build:
+    commands:
+      - echo "Build completed successfully"
+
+artifacts:
+  files:
+    - '**/*'
+  base-directory: .

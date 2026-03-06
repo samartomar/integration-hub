@@ -1,0 +1,24 @@
+---
+description: Custom domains across envs (prod/dev)
+alwaysApply: true
+---
+
+# Custom Domain Rules
+
+## Environment Derivation
+- `Environment=dev | prod` must be passed in CDK context.
+- Domain patterns:
+
+### Prod
+- Vendor portal: `partners.<root>`
+- Admin portal: `cip.<root>`
+- Vendor API: `partners-api.<root>`
+- Admin API: `admin-api.<root>`
+- Runtime API: `api.<root>`
+
+### Dev
+- Same with `.dev.` inserted after subdomain.
+
+## Certificates
+- CloudFront cert: all portal subdomains
+- API Gateway cert: all API subdomains

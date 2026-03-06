@@ -1,0 +1,42 @@
+# Master Engineering Rule (Read First)
+
+This file defines the **non-negotiable engineering invariants** for Integration Hub.
+All other rules are subordinate to this file.
+
+## Always-true invariants (must never break)
+
+1. **Vendor isolation:** A vendor can never read, infer, or affect another vendor’s data unless explicitly allowed by Admin policy.
+2. **JWT-only inbound:** All inbound calls (Admin UI, Vendor UI, Runtime API, AI Gateway) authenticate via JWT and derive identity from token claims only.
+3. **No spoofing:** Any `vendor_code/sourceVendorCode` in request bodies is treated as untrusted. If present and mismatched to token → **403 VENDOR_SPOOF_BLOCKED**.
+4. **Explicit access:** Execution eligibility is driven by explicit Admin allowlist decisions (no wildcard “any vendor” shortcuts).
+5. **Contracts first:** Every operation has a canonical contract; vendor overrides are explicit and auditable.
+6. **Idempotency + audit:** Every execute request is traceable end-to-end with stable transaction identifiers and immutable audit events.
+7. **Fail-open for AI formatting:** AI formatting can never change the underlying runtime outcome; it only adds metadata/derived text.
+8. **PII/PHI controls:** Stored or displayed payloads must be redacted/hashed by policy; debug views must be gated + minimized.
+9. **No manual wiring in CI/CD:** CDK deploys must auto-wire IDs/URLs/secrets via parameters and outputs—no console copy/paste.
+10. **Local dev parity:** Local-up must run without cloud dependencies; a single command restores DB+migrations+seed to a known demo state.
+
+## Required decision precedence (deterministic)
+
+When multiple sources can influence behavior, use the same order everywhere:
+
+- **Feature gate** → **Operation mode** → **Request flag** → **External call**
+
+If any upstream control disables the behavior, downstream steps must not run.
+
+## PR checklist (merge gate)
+
+- [ ] Tests updated/added for any security-affecting change (auth, access, redaction, outbound auth).
+- [ ] No new “bypass” toggles without **dev-only hard guard**.
+- [ ] All schema changes are via Alembic; seed assumes schema exists.
+- [ ] Any new endpoint has: auth, rate-limit strategy, audit event, and clear error model.
+- [ ] Rules updated if behavior changed (and index points to the rule).
+
+## Where to look
+
+- Auth & federation: `security-identity/00-auth-federation.mdc`
+- Access rules: `governance/00-allowlist-access.mdc`
+- Runtime execution: `runtime/00-execute-runtime.mdc`
+- AI formatting: `agent-rules/01-ai-formatter.mdc`
+- Local dev: `platform/00-local-dev.mdc`
+- CI/CD + infra: `platform/01-infra-cicd.mdc`, `platform/02-custom-domains.mdc`

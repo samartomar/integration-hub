@@ -1,0 +1,26 @@
+Data Privacy Rules
+
+PHI and PII must be redacted by default.
+
+Sensitive payload expansion requires:
+expandSensitive=true
+admin-phi group
+
+Billing and usage systems must NEVER store:
+
+memberId
+DOB
+names
+claim numbers
+payload bodies
+
+Allowed metadata only:
+
+vendor_code
+operation_code
+latency
+status_code
+request_bytes
+response_bytes
+timestamps
+AI token counts

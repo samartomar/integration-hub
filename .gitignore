@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# CDK
+cdk.out/
+cdk.out.custom/
+cdk-out-2/
+.bundled/
+*.js
+!cdk.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local env overrides (not committed)
+.env
+.env.local
+.env*.local
+.env.aws
+
+# Node
+node_modules/
+*.tsbuildinfo
+
+# Local runtime artifacts
+.local/
+
+# Ephemeral dev config (structure + README committed, contents not)
+ephemeral/config/*.json
+
+# Postman (generated; run python tooling/scripts/generate_postman.py)
+postman/
+
+# OS
+.DS_Store
+Thumbs.db

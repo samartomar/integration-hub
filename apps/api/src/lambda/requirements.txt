@@ -1,0 +1,2 @@
+# Shared deps (aws-xray-sdk, jsonschema, psycopg2-binary, PyJWT, requests) come from
+# integrationhub-common Lambda layer. Keep only lambda-specific deps here.

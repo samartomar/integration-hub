@@ -1,0 +1,256 @@
+# Integration Hub Product Platform Model
+
+This repository implements an Integration Hub platform that connects vendors through governed, validated integrations.
+
+The platform is not a simple API service.  
+It is a multi-plane integration platform.
+
+---
+
+# Platform Planes
+
+## 1 Control Plane (Admin Governance)
+
+Purpose:
+Manage integrations and platform configuration.
+
+Responsibilities:
+
+Vendor onboarding  
+Operation definitions  
+Contracts and schemas  
+Allowlist rules  
+Endpoint configuration  
+Auth profile configuration  
+Flow Builder governance  
+Replay Console operations  
+
+Primary APIs:
+
+/v1/registry/**
+/v1/admin/**
+
+Primary UI:
+
+apps/web-cip
+
+Primary data schema:
+
+control_plane.*
+
+Control plane changes affect runtime behavior but do not execute integrations themselves.
+
+---
+
+## 2 Runtime Plane (Execution Engine)
+
+Purpose:
+Execute integrations safely and consistently.
+
+Responsibilities:
+
+Request validation  
+Contract enforcement  
+Payload transformation  
+Downstream routing  
+Audit logging  
+Usage metering  
+
+Primary APIs:
+
+/v1/execute
+/v1/ai/execute
+
+Primary code location:
+
+apps/api runtime lambdas
+
+Primary data schema:
+
+data_plane.*
+
+Runtime plane must remain deterministic and stable.
+
+---
+
+## 3 Vendor Plane (Partner Interaction)
+
+Purpose:
+Allow vendors to interact with the Integration Hub.
+
+Responsibilities:
+
+Vendor configuration views  
+Vendor integration testing  
+Vendor usage metrics  
+Vendor debugging tools  
+
+Primary APIs:
+
+/v1/vendor/**
+
+Primary UI:
+
+apps/web-partners
+
+Vendor plane must enforce strict vendor isolation.
+
+Vendor identity always comes from JWT claim:
+
+bcpAuth
+
+---
+
+# Core Platform Subsystems
+
+## Canonical Data Model
+
+Defines standard request and response schemas for operations.
+
+Stored in:
+
+control_plane.operation_contracts
+
+Vendor overrides allowed via:
+
+control_plane.vendor_operation_contracts
+
+Runtime validation must always use:
+
+vendor override if present  
+otherwise canonical contract
+
+---
+
+## Allowlist Access Model
+
+Defines which vendor pairs may interact.
+
+Stored in:
+
+control_plane.vendor_operation_allowlist
+
+Runtime must deny execution if no allowlist entry exists.
+
+---
+
+## Endpoint Registry
+
+Defines downstream vendor endpoints.
+
+Stored in:
+
+control_plane.vendor_endpoints
+
+Includes:
+
+endpoint URL  
+auth profile  
+verification status  
+
+Endpoint verification must be SSRF-safe.
+
+---
+
+## Auth Federation
+
+External vendors may authenticate using different identity providers.
+
+Supported providers include:
+
+Okta  
+Azure AD  
+Google Cloud Identity  
+
+Vendor identity must resolve to the claim:
+
+bcpAuth
+
+This claim maps to Integration Hub vendor codes.
+
+---
+
+## AI Formatter
+
+AI may assist with formatting or transformation tasks.
+
+AI usage is governed by feature gates.
+
+AI must never change routing decisions or validation outcomes.
+
+AI failures must not break runtime execution.
+
+---
+
+## Replay Console
+
+Admin-only tool allowing transaction replay.
+
+Replay must:
+
+respect allowlist rules  
+respect idempotency  
+emit audit events  
+
+Replay must not bypass governance checks.
+
+---
+
+## Usage and Billing
+
+Usage events track integration activity.
+
+Stored in:
+
+usage.usage_events
+
+Rollups stored in:
+
+usage.usage_rollups_daily
+
+Usage must only store metadata and never PHI.
+
+---
+
+# Security Principles
+
+The platform must enforce:
+
+Vendor isolation  
+Contract validation  
+Allowlist enforcement  
+PHI protection  
+Auditability  
+
+All sensitive operations must generate audit events.
+
+PHI access requires special approval groups.
+
+---
+
+# Feature Implementation Expectations
+
+When implementing new platform capabilities, the agent must determine:
+
+Which plane the feature belongs to:
+
+Control Plane  
+Runtime Plane  
+Vendor Plane  
+
+Which subsystems are affected:
+
+Contracts  
+Allowlist  
+Runtime execution  
+Audit  
+Billing  
+AI  
+
+Features must be implemented consistently across all affected layers.
+
+---
+
+# Platform Goal
+
+The Integration Hub acts as a secure, governed integration fabric that enables vendors to exchange data safely without direct point-to-point integrations.

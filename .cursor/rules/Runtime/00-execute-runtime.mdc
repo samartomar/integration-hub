@@ -1,0 +1,28 @@
+---
+description: Runtime execute pipeline rules and invariants
+alwaysApply: true
+---
+
+# Execute Pipeline Rules
+
+## Steps
+1. Auth validated at API Gateway
+2. Allowlist check
+3. Load effective contract
+4. Validate payload
+5. Load effective mapping
+6. Apply mapping
+7. Load effective endpoint
+8. Make downstream call
+9. Validate response (optional)
+10. Apply response mapping
+11. Return final canonical response
+
+## Invariants
+- Direction must be derived once and passed consistently.
+- Actuals always included when `includeActuals=true`.
+- Errors must include canonical error model.
+- Runtime endpoints (`/v1/execute`, `/v1/ai/execute`) are runtime-boundary only.
+- Runtime auth must validate `RUNTIME_API_AUDIENCE`; do not reuse admin/vendor audiences.
+- Vendor identity is derived from JWT claims only; request body cannot override caller identity.
+- Any admin-triggered runtime test flow must still use a runtime-scoped token (runtime audience + scopes), not an admin token.

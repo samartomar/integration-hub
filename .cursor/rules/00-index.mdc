@@ -1,0 +1,10 @@
+---
+description: Index of high-value Cursor rules
+alwaysApply: true
+---
+
+# Rule Index
+
+- Security & Identity: `02-auth-federation.mdc`, `14-security-privacy.mdc`
+- Runtime: `07-execute-runtime.mdc`
+- Policy Engine invariant: centralized enforcement in `backend/lambda/policy_engine.py`

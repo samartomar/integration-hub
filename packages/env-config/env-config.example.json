@@ -1,0 +1,24 @@
+{
+  "_comment": "Copy to env-config.json. All values are adoptable.",
+  "environment": "dev",
+  "customDomainRoot": "",
+  "customDomainHostedZoneId": "",
+  "projectPrefix": "integrationhub",
+  "projectDisplayName": "Integration Hub",
+  "bootstrapQualifier": "intghub",
+  "databaseName": "integrationhub",
+  "jwtAudience": "urn:integrationhub:api",
+  "subdomains": {
+    "adminPortal": "cip",
+    "vendorPortal": "partners",
+    "adminApi": "admin-api",
+    "partnersApi": "partners-api",
+    "runtimeApi": "api"
+  },
+  "features": {
+    "aiGateway": true,
+    "aiTool": true,
+    "endpointVerifier": true,
+    "onboarding": true
+  }
+}

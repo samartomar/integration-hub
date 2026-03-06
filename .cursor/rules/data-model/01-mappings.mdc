@@ -1,0 +1,24 @@
+---
+description: Mapping logic, canonical pass-through, and approval effects
+alwaysApply: true
+---
+
+# Mapping Rules
+
+## Effective Mapping
+- Determine via `resolve_effective_mapping(flow_direction)`.
+- Vendor mapping overrides canonical pass-through.
+- Canonical pass-through is valid when:
+  - No vendor mapping exists AND
+  - Canonical request/response schema accepts format.
+
+## Errors
+- Only return mapping errors when a mapping is **required** (e.g., vendor contract override).
+
+## UI Feedback
+- If canonical pass-through is used:
+  - Show “Using canonical format”
+  - Not “Missing mapping”
+
+## Approval
+- If mapping edits are gated, vendor changes must create a **change-request**.

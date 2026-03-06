@@ -1,0 +1,21 @@
+---
+description: Feature-gate behavior for vendor UI
+alwaysApply: true
+---
+
+# Feature Gates
+
+## Behavior
+- Feature gates determine whether vendor edits are:
+  - Direct-write
+  - Or admin-approved
+
+## Examples
+- mapping_edit
+- contract_edit
+- endpoint_edit
+- allowlist_edit
+
+## Invariants
+- Feature gates do NOT affect authentication.
+- Feature gates do NOT influence vendor identity.
