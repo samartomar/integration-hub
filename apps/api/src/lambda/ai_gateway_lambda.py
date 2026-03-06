@@ -366,6 +366,8 @@ def _log_ai_execute_completed(
     log_json(log_level, "ai_execute_completed", **clean)
 
 
+# AI gateway intentionally returns a custom envelope
+# because responses contain model metadata and streaming payloads.
 def _build_response_envelope(
     transaction_id: str,
     correlation_id: str,

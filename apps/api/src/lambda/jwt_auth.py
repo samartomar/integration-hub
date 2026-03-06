@@ -80,7 +80,7 @@ def load_jwt_auth_config(conn: Any) -> JwtAuthConfig | None:
     else:
         audiences = []
 
-    vendor_claim = (config_raw.get("vendor_claim") or "bcpAuth").strip() or "bcpAuth"
+    vendor_claim = "bcpAuth"
     allowed_alg = (config_raw.get("allowed_alg") or "RS256").strip() or "RS256"
     clock_skew = config_raw.get("clock_skew_seconds")
     if isinstance(clock_skew, (int, float)):
@@ -102,7 +102,7 @@ def load_jwt_auth_config_from_env() -> JwtAuthConfig | None:
     """
     Load JWT auth config from environment variables (Tier-3 inbound IDP).
     IDP_JWKS_URL must be set for JWT to be enabled; if empty/unset returns None.
-    Env vars: IDP_JWKS_URL, IDP_ISSUER, IDP_AUDIENCE, IDP_VENDOR_CLAIM, IDP_ALLOWED_ALGS.
+    Env vars: IDP_JWKS_URL, IDP_ISSUER, IDP_AUDIENCE, IDP_ALLOWED_ALGS.
     """
     jwks_url = (os.environ.get("IDP_JWKS_URL") or "").strip()
     if not jwks_url:
@@ -111,7 +111,7 @@ def load_jwt_auth_config_from_env() -> JwtAuthConfig | None:
     issuer = (os.environ.get("IDP_ISSUER") or "").strip()
     audience_raw = (os.environ.get("IDP_AUDIENCE") or "").strip()
     audiences = [a.strip() for a in audience_raw.split(",") if a.strip()] if audience_raw else []
-    vendor_claim = (os.environ.get("IDP_VENDOR_CLAIM") or "bcpAuth").strip() or "bcpAuth"
+    vendor_claim = "bcpAuth"
     algs_raw = (os.environ.get("IDP_ALLOWED_ALGS") or "RS256").strip()
     allowed_algs = [a.strip() for a in algs_raw.split(",") if a.strip()] or ["RS256"]
 
