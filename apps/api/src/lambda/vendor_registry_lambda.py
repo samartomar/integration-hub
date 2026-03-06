@@ -6,6 +6,7 @@ import base64
 import json
 import os
 import re
+import socket
 import secrets
 import urllib.parse
 import uuid as _uuid
@@ -250,6 +251,30 @@ def is_feature_gated(conn: Any, request_type: str) -> bool:
         return bool(_is_feature_gated(conn, request_type))
     except Exception:
         return APPROVAL_GATE_ENABLED
+
+
+def _create_vendor_change_request(
+    conn: Any,
+    *,
+    request_type: str,
+    vendor_code: str,
+    operation_code: str | None,
+    payload: dict[str, Any],
+    requested_by: str | None = None,
+    requested_via: str = "vendor-portal",
+) -> dict[str, Any]:
+    """Patchable wrapper around approval_utils.create_change_request."""
+    from approval_utils import create_change_request
+
+    return create_change_request(
+        conn,
+        request_type=request_type,
+        vendor_code=vendor_code,
+        operation_code=operation_code,
+        payload=payload,
+        requested_by=requested_by,
+        requested_via=requested_via,
+    )
 
 
 def _resolve_vendor_code_from_jwt(event: dict[str, Any]) -> str:
@@ -853,7 +878,10 @@ def _upsert_contract(
 # --- Operations catalog ---
 
 
-def _list_operations_catalog(conn: Any) -> list[dict[str, Any]]:
+def _list_operations_catalog(conn: Any, vendor_code: str | None = None) -> list[dict[str, Any]]:
+    vendor_code_norm = (vendor_code or "").strip().upper()
+    if not vendor_code_norm:
+        return []
     q = sql.SQL(
         """
         SELECT operation_code, description, canonical_version, is_async_capable, is_active,
@@ -867,6 +895,11 @@ def _list_operations_catalog(conn: Any) -> list[dict[str, Any]]:
         cur.execute(q)
         rows = cur.fetchall()
     return [_to_camel_case_dict(dict(r)) for r in rows]
+
+
+def _list_effective_vendor_contracts(conn: Any, vendor_code: str) -> list[dict[str, Any]]:
+    """Compatibility wrapper for config bundle tests; returns effective contract list."""
+    return _list_contracts(conn, vendor_code)
 
 
 # --- Route handlers ---
@@ -1019,7 +1052,7 @@ def _handle_post_endpoints(event: dict[str, Any], conn: Any, vendor_code: str) -
             )
     flow_direction = _validate_endpoint_flow_direction(body.get("flowDirection") or body.get("flow_direction"))
 
-    if APPROVAL_GATE_ENABLED:
+    if is_feature_gated(conn, "ENDPOINT_CONFIG"):
         payload = {
             "version": 1,
             "endpoint": {
@@ -1034,8 +1067,7 @@ def _handle_post_endpoints(event: dict[str, Any], conn: Any, vendor_code: str) -
             },
         }
         try:
-            from approval_utils import create_change_request
-            cr = create_change_request(
+            cr = _create_vendor_change_request(
                 conn,
                 request_type="ENDPOINT_CONFIG",
                 vendor_code=vendor_code,
@@ -1049,15 +1081,15 @@ def _handle_post_endpoints(event: dict[str, Any], conn: Any, vendor_code: str) -
             return _error(500, "INTERNAL_ERROR", str(e))
 
     row = _upsert_endpoint(
-        conn,
-        vendor_code,
-        operation_code,
-        url,
-        http_method,
-        payload_format,
-        timeout_ms,
-        is_active_bool,
-        request_id,
+        conn=conn,
+        vendor_code=vendor_code,
+        operation_code=operation_code,
+        url=url,
+        http_method=http_method,
+        payload_format=payload_format,
+        timeout_ms=timeout_ms,
+        is_active=is_active_bool,
+        request_id=request_id,
         verification_request=verification_request,
         auth_profile_id=auth_profile_id,
         flow_direction=flow_direction,
@@ -1097,7 +1129,7 @@ def _handle_post_endpoints_verify(event: dict[str, Any], conn: Any, vendor_code:
     if not endpoint_id:
         return _error(500, "INTERNAL_ERROR", "Endpoint missing id")
 
-    auth_profile_id = row.get("auth_profile_id")
+    auth_profile_id = row.get("auth_profile_id") or row.get("vendor_auth_profile_id")
     if auth_profile_id is None:
         # No-auth endpoint: treat as valid, skip signing logic. Proceed to HTTP verification only.
         pass
@@ -1203,8 +1235,8 @@ def _handle_get_config_bundle(event: dict[str, Any]) -> dict[str, Any]:
 
     try:
         with _get_connection() as conn:
-            contracts = _list_contracts(conn, vendor_code)
-            operations_catalog = _list_operations_catalog(conn)
+            contracts = _list_effective_vendor_contracts(conn, vendor_code)
+            operations_catalog = _list_operations_catalog(conn, vendor_code=vendor_code)
             supported_operations = _list_supported_operations(conn, vendor_code)
             endpoints = _list_endpoints(conn, vendor_code)
             mappings = _list_mappings(conn, vendor_code, None, None)
@@ -1276,8 +1308,8 @@ def _handle_post_contracts(event: dict[str, Any], conn: Any, vendor_code: str) -
     return _success(200, {"contract": _to_camel_case_dict(dict(row))})
 
 
-def _handle_get_operations_catalog(conn: Any) -> dict[str, Any]:
-    items = _list_operations_catalog(conn)
+def _handle_get_operations_catalog(conn: Any, vendor_code: str) -> dict[str, Any]:
+    items = _list_operations_catalog(conn, vendor_code=vendor_code)
     return _success(200, {"items": items})
 
 
@@ -1718,6 +1750,24 @@ def _handle_get_my_change_requests(event: dict[str, Any]) -> dict[str, Any]:
         return _error(503, "DB_ERROR", str(e))
     except Exception as e:
         return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_post_auth_profile_test_connection(event: dict[str, Any]) -> dict[str, Any]:
+    from registry_lambda import _handle_post_auth_profile_test_connection as _delegate
+
+    return _delegate(event)
+
+
+def _handle_post_auth_profile_token_preview(event: dict[str, Any]) -> dict[str, Any]:
+    from registry_lambda import _handle_post_auth_profile_token_preview as _delegate
+
+    return _delegate(event)
+
+
+def _handle_post_auth_profile_mtls_validate(event: dict[str, Any]) -> dict[str, Any]:
+    from registry_lambda import _handle_post_auth_profile_mtls_validate as _delegate
+
+    return _delegate(event)
 
 
 def _handle_post_change_requests(event: dict[str, Any]) -> dict[str, Any]:
@@ -2426,8 +2476,9 @@ def _build_my_operations_response(
         key = (op_code, canonical_ver)
         canonical_key = key
         has_canonical = canonical_key in canonical_set
-        contract_status = vendor_contract_map.get(key, "MISSING")
-        has_vendor_contract = contract_status in ("OK", "INACTIVE")
+        vendor_contract_status = vendor_contract_map.get(key)
+        contract_status = vendor_contract_status or ("OK" if has_canonical else "MISSING")
+        has_vendor_contract = vendor_contract_status in ("OK", "INACTIVE")
 
         is_outbound = (
             (src == me or is_any_src)
@@ -2551,6 +2602,8 @@ def _build_my_operations_response(
                 p = "*"
             ep_val = endpoint_status_val if direction_outbound else "OK"
             has_ep = has_endpoint if direction_outbound else True
+            has_vendor_request_mapping = has_request_mapping and not uses_canonical_request
+            has_vendor_response_mapping = has_response_mapping and not uses_canonical_response
             return {
                 "operationCode": op_code,
                 "canonicalVersion": canonical_ver,
@@ -2561,8 +2614,11 @@ def _build_my_operations_response(
                 "hasRequestMapping": has_request_mapping,
                 "hasResponseMapping": has_response_mapping,
                 "mappingConfigured": mapping_configured,
+                "effectiveMappingConfigured": mapping_configured,
                 "usesCanonicalRequestMapping": uses_canonical_request,
                 "usesCanonicalResponseMapping": uses_canonical_response,
+                "hasVendorRequestMapping": has_vendor_request_mapping,
+                "hasVendorResponseMapping": has_vendor_response_mapping,
                 "requiresRequestMapping": requires_request_mapping,
                 "requiresResponseMapping": requires_response_mapping,
                 "requestMappingStatus": request_mapping_status,
@@ -2819,23 +2875,22 @@ def _handle_post_allowlist(event: dict[str, Any]) -> dict[str, Any]:
     flow_raw = (body.get("flowDirection") or body.get("flow_direction") or "BOTH").strip().upper()
     flow_direction = flow_raw if flow_raw in ("INBOUND", "OUTBOUND", "BOTH") else "BOTH"
 
-    if APPROVAL_GATE_ENABLED:
-        payload = {
-            "version": 1,
-            "allowlist": {
-                "source_vendor_code": source_raw,
-                "target_vendor_code": target_raw,
-                "is_any_source": False,
-                "is_any_target": False,
-                "operation_code": op_raw,
-                "rule_scope": "vendor",
-                "flow_direction": flow_direction,
-            },
-        }
-        try:
-            with _get_connection() as conn:
-                from approval_utils import create_change_request
-                cr = create_change_request(
+    try:
+        with _get_connection() as conn:
+            if is_feature_gated(conn, "ALLOWLIST_RULE"):
+                payload = {
+                    "version": 1,
+                    "allowlist": {
+                        "source_vendor_code": source_raw,
+                        "target_vendor_code": target_raw,
+                        "is_any_source": False,
+                        "is_any_target": False,
+                        "operation_code": op_raw,
+                        "rule_scope": "vendor",
+                        "flow_direction": flow_direction,
+                    },
+                }
+                cr = _create_vendor_change_request(
                     conn,
                     request_type="ALLOWLIST_RULE",
                     vendor_code=vendor_code,
@@ -2844,12 +2899,7 @@ def _handle_post_allowlist(event: dict[str, Any]) -> dict[str, Any]:
                     requested_by=None,
                     requested_via="vendor-portal",
                 )
-            return _success(202, {"changeRequestId": str(cr.get("id")), "status": "PENDING"})
-        except Exception as e:
-            return _error(500, "INTERNAL_ERROR", str(e))
-
-    try:
-        with _get_connection() as conn:
+                return _success(202, {"changeRequestId": str(cr.get("id")), "status": "PENDING"})
             # Eligibility: Admin must permit (source,target,op). Check admin rows only.
             # Use is_any_source / is_any_target for wildcards (no '*' or HUB).
             q_eligible = sql.SQL(
@@ -4436,7 +4486,7 @@ def _handle_put_operation_mappings(
     use_canon_req = use_canon_req is True
     use_canon_resp = use_canon_resp is True
 
-    if APPROVAL_GATE_ENABLED:
+    if is_feature_gated(conn, "MAPPING_CONFIG"):
         mode = "CANONICAL" if (use_canon_req and use_canon_resp) else "CUSTOM"
         payload = {
             "version": 1,
@@ -4451,8 +4501,7 @@ def _handle_put_operation_mappings(
             },
         }
         try:
-            from approval_utils import create_change_request
-            cr = create_change_request(
+            cr = _create_vendor_change_request(
                 conn,
                 request_type="MAPPING_CONFIG",
                 vendor_code=vendor_code,
@@ -4510,6 +4559,33 @@ def _handle_post_mappings(event: dict[str, Any], conn: Any, vendor_code: str) ->
         return _error(400, "VALIDATION_ERROR", "mapping must be a JSON object")
     is_active = body.get("isActive", True)
     is_active_bool = is_active if isinstance(is_active, bool) else str(is_active).lower() in ("true", "1", "yes")
+    if is_feature_gated(conn, "MAPPING_CONFIG"):
+        payload = {
+            "version": 1,
+            "mapping": {
+                "vendor_code": vendor_code,
+                "operation_code": operation_code,
+                "canonical_version": canonical_version,
+                "direction": direction,
+                "flow_direction": "OUTBOUND",
+                "mapping": mapping_raw,
+                "is_active": is_active_bool,
+            },
+        }
+        try:
+            cr = _create_vendor_change_request(
+                conn,
+                request_type="MAPPING_CONFIG",
+                vendor_code=vendor_code,
+                operation_code=operation_code,
+                payload=payload,
+                requested_by=None,
+                requested_via="vendor-portal",
+            )
+            return _success(202, {"id": str(cr.get("id")), "status": str(cr.get("status") or "PENDING")})
+        except Exception as e:
+            return _error(500, "INTERNAL_ERROR", str(e))
+
     row = _upsert_vendor_mapping(
         conn, vendor_code, operation_code, canonical_version, direction,
         mapping_raw, is_active_bool, request_id,
@@ -4976,7 +5052,7 @@ def _handle_put_flow(
         (vendor_code, operation_code, canonical_version, json.dumps(visual_model)),
     )
 
-    if APPROVAL_GATE_ENABLED:
+    if is_feature_gated(conn, "MAPPING_CONFIG"):
         mode = "CANONICAL" if (use_req and use_resp) else "CUSTOM"
         payload = {
             "version": 1,
@@ -4991,8 +5067,7 @@ def _handle_put_flow(
             },
         }
         try:
-            from approval_utils import create_change_request
-            cr = create_change_request(
+            cr = _create_vendor_change_request(
                 conn,
                 request_type="MAPPING_CONFIG",
                 vendor_code=vendor_code,
@@ -5278,7 +5353,7 @@ def _handler_impl(event: dict[str, Any], context: object) -> dict[str, Any]:
     if resource == "operations-catalog":
         if method == "GET":
             with _get_connection() as conn:
-                return _handle_get_operations_catalog(conn)
+                return _handle_get_operations_catalog(conn, vendor_code)
 
     if resource == "operations-mapping-status":
         if method == "GET":
@@ -5302,6 +5377,12 @@ def _handler_impl(event: dict[str, Any], context: object) -> dict[str, Any]:
             return _handle_get_auth_profiles(event)
         if sub is None and method == "POST":
             return _handle_post_auth_profiles(event)
+        if sub == "test-connection" and method == "POST":
+            return _handle_post_auth_profile_test_connection(event)
+        if sub == "token-preview" and method == "POST":
+            return _handle_post_auth_profile_token_preview(event)
+        if sub == "mtls-validate" and method == "POST":
+            return _handle_post_auth_profile_mtls_validate(event)
         if sub and method == "PATCH":
             return _handle_patch_auth_profile(event, sub)
         if sub and method == "DELETE":

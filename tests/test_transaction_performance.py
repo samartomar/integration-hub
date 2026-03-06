@@ -19,6 +19,10 @@ from vendor_registry_lambda import handler as vendor_handler  # noqa: E402
 from vendor_registry_jwt import add_jwt_auth  # noqa: E402
 
 AUDIT_HEADERS = {"Authorization": "Bearer test-admin-jwt"}
+AUDIT_AUTHORIZER = {
+    "jwt": {"claims": {"sub": "okta|admin", "aud": "api://default", "groups": ["admin"]}},
+    "principalId": "okta|admin",
+}
 
 
 # --- Admin Audit Lambda: GET /v1/audit/transactions ---
@@ -37,7 +41,7 @@ def test_audit_transactions_list_requires_from_to(mock_query: MagicMock, mock_co
         "headers": AUDIT_HEADERS,
         "queryStringParameters": {"vendorCode": "LH001"},  # no from/to
         "pathParameters": {},
-        "requestContext": {"http": {"method": "GET"}},
+        "requestContext": {"http": {"method": "GET"}, "authorizer": AUDIT_AUTHORIZER},
     }
 
     resp = audit_handler(event, None)
@@ -67,7 +71,7 @@ def test_audit_transactions_list_enforces_max_limit(mock_query: MagicMock, mock_
             "limit": "999",
         },
         "pathParameters": {},
-        "requestContext": {"http": {"method": "GET"}},
+        "requestContext": {"http": {"method": "GET"}, "authorizer": AUDIT_AUTHORIZER},
     }
 
     resp = audit_handler(event, None)

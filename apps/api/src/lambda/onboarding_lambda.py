@@ -15,7 +15,7 @@ from canonical_response import canonical_error, canonical_ok, policy_denied_resp
 from cors import add_cors_to_response
 from observability import log_json, with_observability
 from policy_engine import PolicyContext, evaluate_policy
-from psycopg2.extras import RealDictCursor
+
 
 def _resolve_db_url() -> str:
     """Resolve DB URL from DB_URL or DB_SECRET_ARN."""

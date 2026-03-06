@@ -31,9 +31,9 @@ from platform_rollout import (
     set_current_phase,
     update_platform_feature,
 )
+from policy_engine import PolicyContext, evaluate_policy
 from psycopg2 import sql
 from psycopg2.extras import RealDictCursor
-from policy_engine import PolicyContext, evaluate_policy
 from readiness_mapping import is_mapping_configured_for_direction
 
 # operation_code: uppercase alphanumeric with underscores (e.g. SEND_RECEIPT)
@@ -547,7 +547,7 @@ def _fetch_jwt_preview_token(config: dict[str, Any], timeout_ms: int) -> dict[st
     form = {"grant_type": "client_credentials"}
     if scope:
         form["scope"] = scope
-    basic = base64.b64encode(f"{client_id}:{client_secret}".encode("utf-8")).decode("ascii")
+    basic = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode("ascii")
     headers = {
         "Content-Type": "application/x-www-form-urlencoded",
         "Authorization": f"Basic {basic}",
@@ -635,7 +635,7 @@ def _build_test_auth_parts(auth_type: str, auth_config: dict[str, Any], timeout_
         password = str(auth_config.get("password") or "").strip()
         if not username or not password:
             raise ValueError("authConfig.username and authConfig.password are required for BASIC")
-        encoded = base64.b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")
+        encoded = base64.b64encode(f"{username}:{password}".encode()).decode("ascii")
         headers["Authorization"] = f"Basic {encoded}"
         resolved_headers_redacted["Authorization"] = "Basic ***REDACTED***"
     elif auth_type == "BEARER":

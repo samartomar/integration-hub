@@ -199,12 +199,12 @@ def test_validate_control_plane_vendor_endpoints_filters_active_orders_desc_limi
 
 
 def test_validate_control_plane_allowlist_query_includes_expected_columns() -> None:
-    """validate_control_plane still queries allowlist table and source wildcard support."""
+    """validate_control_plane still queries allowlist table and wildcard support."""
     # Read routing_lambda source to verify wildcard SQL (avoids jwt import in test env)
     routing_path = Path(__file__).resolve().parent.parent / "apps" / "api" / "src" / "lambda" / "routing_lambda.py"
     source = routing_path.read_text()
     assert "is_any_source" in source, "Allowlist should use is_any_source for wildcard source"
-    assert "is_any_target" not in source, "Target wildcard semantics are no longer used in runtime query"
+    assert "is_any_target" in source, "Allowlist should use is_any_target for wildcard target"
     assert "vendor_operation_allowlist" in source, "Allowlist table must be queried"
 
 

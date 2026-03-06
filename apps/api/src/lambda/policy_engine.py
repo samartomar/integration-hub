@@ -8,7 +8,6 @@ import os
 from dataclasses import dataclass
 from typing import Any, Literal
 
-
 AUTH_REQUIRED = "AUTH_REQUIRED"
 AUTH_INVALID = "AUTH_INVALID"
 ADMIN_GROUP_REQUIRED = "ADMIN_GROUP_REQUIRED"

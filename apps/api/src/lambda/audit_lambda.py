@@ -7,12 +7,12 @@ import json
 import os
 import re
 import urllib.parse
+from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Any, Generator
+from typing import Any
 
 import psycopg2
-
 from admin_guard import validate_admin_claims
 from bcp_auth import AuthError
 from canonical_response import canonical_error, canonical_ok, policy_denied_response

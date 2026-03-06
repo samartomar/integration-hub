@@ -6,7 +6,6 @@ while allowing existing checks (allowlist/auth) to remain the source of truth.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any, TypedDict
 
 

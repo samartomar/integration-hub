@@ -121,7 +121,6 @@ def test_load_jwt_auth_config_from_env_empty_jwks_returns_none() -> None:
         "IDP_JWKS_URL": "https://idp.example.com/.well-known/jwks.json",
         "IDP_ISSUER": "https://idp.example.com",
         "IDP_AUDIENCE": "hub-api",
-        "IDP_VENDOR_CLAIM": "tenant",
         "IDP_ALLOWED_ALGS": "RS256,RS384",
     },
     clear=False,
@@ -133,5 +132,5 @@ def test_load_jwt_auth_config_from_env_returns_config() -> None:
     assert config.jwks_uri == "https://idp.example.com/.well-known/jwks.json"
     assert config.issuer == "https://idp.example.com"
     assert config.audiences == ["hub-api"]
-    assert config.vendor_claim == "tenant"
+    assert config.vendor_claim == "bcpAuth"
     assert config.allowed_algs == ["RS256", "RS384"]

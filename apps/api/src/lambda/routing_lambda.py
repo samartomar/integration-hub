@@ -370,7 +370,7 @@ def load_operation_contract(
 ) -> dict[str, Any] | None:
     """
     Load active contract for (operation_code, canonical_version).
-    When vendor_code provided: only vendor_operation_contracts (no fallback).
+    When vendor_code provided: vendor_operation_contracts with canonical fallback.
     Returns contract row with request_schema, response_schema or None if not found.
     """
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -387,7 +387,8 @@ def load_operation_contract(
                 (vendor_code, operation_code, canonical_version),
             )
             row = cur.fetchone()
-            return dict(row) if row else None
+            if row:
+                return dict(row)
         cur.execute(
             """
             SELECT operation_code, canonical_version, request_schema, response_schema
