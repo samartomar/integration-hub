@@ -16,6 +16,7 @@ build/
 
 # CDK
 cdk.out/
+cdk-out/
 cdk.out.custom/
 cdk-out-2/
 .bundled/
@@ -24,7 +25,6 @@ cdk-out-2/
 
 # IDE
 .idea/
-.vscode/
 *.swp
 *.swo
 

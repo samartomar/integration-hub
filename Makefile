@@ -14,8 +14,8 @@ local-up:
 	fi
 	$(MAKE) local-sync-db
 	@test -d apps/web-cip/node_modules || npm install
-	@(cd apps/web-cip && npm run dev) &
-	@(cd apps/web-partners && npm run dev) &
+	@echo "Starting Admin + Vendor portals with AWS/Okta settings..."
+	@bash tooling/scripts/run_ui_aws.sh &
 	@echo "Hub API: http://localhost:8080 | Admin: http://localhost:5173 | Vendor: http://localhost:5174"
 
 local-down:

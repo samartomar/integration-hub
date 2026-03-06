@@ -33,7 +33,8 @@ interface TopBarProps {
 
 export function TopBar({ onSettingsClick, onFeaturesClick }: TopBarProps) {
   const location = useLocation();
-  const { authState } = useOktaAuth();
+  const okta = useOktaAuth();
+  const authState = okta?.authState;
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement | null>(null);

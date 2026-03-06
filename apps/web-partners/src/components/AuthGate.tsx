@@ -7,13 +7,27 @@ interface AuthGateProps {
 }
 
 /**
- * When Okta is enabled, requires authentication before rendering children.
- * Shows a login screen when not authenticated.
- * When Okta is disabled, renders children immediately.
+ * Always requires authentication before rendering children.
+ * When Okta is not configured, blocks access with setup guidance.
  */
 export function AuthGate({ children }: AuthGateProps) {
   const oktaEnabled = isOktaEnabled();
-  if (!oktaEnabled) return <>{children}</>;
+  if (!oktaEnabled) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-8">
+        <div className="max-w-md w-full text-center">
+          <h1 className="text-2xl font-bold text-slate-900 mb-2">Authentication required</h1>
+          <p className="text-slate-600 mb-3">
+            The Licensee Portal requires Okta sign-in before any UI can load.
+          </p>
+          <p className="text-sm text-slate-500">
+            Start the UI with AWS settings, for example `make dev-ui-aws`, or configure `.env.aws`
+            so the login screen can be shown.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return <AuthGateInner>{children}</AuthGateInner>;
 }
@@ -53,7 +67,7 @@ function AuthGateInner({ children }: AuthGateProps) {
             }}
             className="px-6 py-3 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition-colors"
           >
-            Log in
+            Click to login
           </button>
         </div>
       </div>

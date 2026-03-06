@@ -1,0 +1,10 @@
+{
+  "files.exclude": {
+    "**/cdk.out": true,
+    "**/cdk.out.custom": true,
+    "**/cdk-out-2": true,
+    "**/.pytest_cache": true,
+    "**/.bundled": true,
+    "**/node_modules": true
+    }
+}
