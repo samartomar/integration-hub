@@ -986,6 +986,16 @@ class DataPlaneStack(Stack):
             integration=registry_integration,
         )
         admin_api.add_routes(
+            path="/v1/registry/auth-profiles/test-connection",
+            methods=[apigwv2.HttpMethod.POST],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/registry/auth-profiles/token-preview",
+            methods=[apigwv2.HttpMethod.POST],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
             path="/v1/registry/contracts",
             methods=[apigwv2.HttpMethod.GET, apigwv2.HttpMethod.POST],
             integration=registry_integration,
@@ -1003,6 +1013,51 @@ class DataPlaneStack(Stack):
         admin_api.add_routes(
             path="/v1/registry/readiness/batch",
             methods=[apigwv2.HttpMethod.POST],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/registry/usage",
+            methods=[apigwv2.HttpMethod.GET],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/registry/mission-control/topology",
+            methods=[apigwv2.HttpMethod.GET],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/registry/mission-control/activity",
+            methods=[apigwv2.HttpMethod.GET],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/registry/policy-decisions",
+            methods=[apigwv2.HttpMethod.GET],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/registry/policy-simulator",
+            methods=[apigwv2.HttpMethod.GET],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/registry/platform/features",
+            methods=[apigwv2.HttpMethod.GET],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/registry/platform/phases",
+            methods=[apigwv2.HttpMethod.GET],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/registry/platform/settings/current-phase",
+            methods=[apigwv2.HttpMethod.PUT],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/registry/platform/features/{featureCode}",
+            methods=[apigwv2.HttpMethod.PUT],
             integration=registry_integration,
         )
         admin_api.add_routes(
