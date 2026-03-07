@@ -5,16 +5,12 @@ import { EnvironmentBadge } from "./EnvironmentBadge";
 import { AuthButton } from "./AuthButton";
 import { useFeature } from "../features/FeatureFlagContext";
 
+/** Converged nav: Registry, Canonical, Flow Builder, Adoption workbench. Tool pages (Sandbox, etc.) reached via Canonical/Adoption/Operator Guide. */
 const primaryNavItems = [
   { path: "/admin/registry", label: "Registry", featureCode: "registry_basic" },
   { path: "/admin/canonical", label: "Canonical", featureCode: "registry_basic" },
   { path: "/admin/flow-builder", label: "Flow Builder", featureCode: "registry_basic" },
-  { path: "/admin/sandbox", label: "Sandbox", featureCode: "registry_basic" },
-  { path: "/admin/ai-debugger", label: "AI Debugger", featureCode: "registry_basic" },
-  { path: "/admin/runtime-preflight", label: "Runtime Preflight", featureCode: "registry_basic" },
-  { path: "/admin/canonical-execute", label: "Canonical Execute", featureCode: "registry_basic" },
-  { path: "/admin/canonical-mappings", label: "Canonical Mappings", featureCode: "registry_basic" },
-  { path: "/admin/canonical-mapping-readiness", label: "Mapping Readiness", featureCode: "registry_basic" },
+  { path: "/admin/adoption", label: "Adoption", featureCode: "registry_basic" },
   { path: "/ai", label: "AI", featureCode: "ai_formatter_ui" },
 ] as const;
 
@@ -22,6 +18,7 @@ const adminNavItems = [
   { path: "/admin/dashboard", label: "Dashboard", featureCode: "home_welcome" },
   { path: "/admin/transactions", label: "Transactions", featureCode: "audit_view" },
   { path: "/admin/mission-control", label: "Mission Control", featureCode: "registry_basic" },
+  { path: "/admin/syntegris-operator-guide", label: "Operator Guide", featureCode: "registry_basic" },
   { path: "/admin/policy-decisions", label: "Policy Decisions", adminOnly: true },
   { path: "/admin/policy-simulator", label: "Policy Simulator", adminOnly: true },
   { path: "/admin/journey-mode", label: "Journey Mode" },
@@ -33,12 +30,13 @@ function isPrimaryNavActive(pathname: string, label: string): boolean {
   }
   if (label === "Canonical") return pathname.startsWith("/admin/canonical");
   if (label === "Flow Builder") return pathname.startsWith("/admin/flow-builder");
-  if (label === "Sandbox") return pathname.startsWith("/admin/sandbox");
-  if (label === "AI Debugger") return pathname.startsWith("/admin/ai-debugger");
-  if (label === "Runtime Preflight") return pathname.startsWith("/admin/runtime-preflight");
-  if (label === "Canonical Execute") return pathname.startsWith("/admin/canonical-execute");
-  if (label === "Canonical Mappings") return pathname.startsWith("/admin/canonical-mappings");
-  if (label === "Mapping Readiness") return pathname.startsWith("/admin/canonical-mapping-readiness");
+  if (label === "Adoption")
+    return (
+      pathname.startsWith("/admin/adoption") ||
+      pathname.startsWith("/admin/syntegris-adoption") ||
+      pathname.startsWith("/admin/canonical-mapping-readiness")
+    );
+  if (label === "Operator Guide") return pathname.startsWith("/admin/syntegris-operator-guide");
   if (label === "AI") return pathname.startsWith("/ai");
   return false;
 }
@@ -101,13 +99,9 @@ export function TopBar({ onSettingsClick, onFeaturesClick }: TopBarProps) {
   });
   const visiblePrimaryNavItems = primaryNavItems.filter((item) => {
     if (item.path === "/admin/registry") return featureRegistryBasic;
+    if (item.path === "/admin/canonical") return featureRegistryBasic;
     if (item.path === "/admin/flow-builder") return featureRegistryBasic;
-    if (item.path === "/admin/sandbox") return featureRegistryBasic;
-    if (item.path === "/admin/ai-debugger") return featureRegistryBasic;
-    if (item.path === "/admin/runtime-preflight") return featureRegistryBasic;
-    if (item.path === "/admin/canonical-execute") return featureRegistryBasic;
-    if (item.path === "/admin/canonical-mappings") return featureRegistryBasic;
-    if (item.path === "/admin/canonical-mapping-readiness") return featureRegistryBasic;
+    if (item.path === "/admin/adoption") return featureRegistryBasic;
     if (item.path === "/ai") return featureAiFormatter;
     return true;
   });

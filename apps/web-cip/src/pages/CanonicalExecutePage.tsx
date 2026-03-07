@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   listSandboxCanonicalOperations,
@@ -199,6 +200,7 @@ function ResultPanel({ result }: { result: CanonicalBridgeResponse }) {
 }
 
 export function CanonicalExecutePage() {
+  const [searchParams] = useSearchParams();
   const [selectedOp, setSelectedOp] = useState<CanonicalOperationItem | null>(null);
   const [sourceVendor, setSourceVendor] = useState("LH001");
   const [targetVendor, setTargetVendor] = useState("LH002");
@@ -222,6 +224,18 @@ export function CanonicalExecutePage() {
 
   const allItems = opsData?.items ?? [];
   const items = useMemo(() => allItems, [allItems]);
+
+  useEffect(() => {
+    const opCode = searchParams.get("operationCode");
+    const src = searchParams.get("sourceVendor");
+    const tgt = searchParams.get("targetVendor");
+    if (src) setSourceVendor(src);
+    if (tgt) setTargetVendor(tgt);
+    if (opCode && allItems.length > 0) {
+      const op = allItems.find((o) => o.operationCode === opCode) ?? null;
+      if (op) setSelectedOp(op);
+    }
+  }, [searchParams, allItems]);
 
   useEffect(() => {
     if (opDetail?.examples?.requestEnvelope) {

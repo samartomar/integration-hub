@@ -1091,6 +1091,36 @@ class DataPlaneStack(Stack):
             integration=registry_integration,
         )
         admin_api.add_routes(
+            path="/v1/syntegris/diagnostics",
+            methods=[apigwv2.HttpMethod.GET],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/syntegris/inventory",
+            methods=[apigwv2.HttpMethod.GET],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/syntegris/inventory/{operationCode}",
+            methods=[apigwv2.HttpMethod.GET],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/syntegris/adoption",
+            methods=[apigwv2.HttpMethod.GET],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/syntegris/adoption/summary",
+            methods=[apigwv2.HttpMethod.GET],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/syntegris/adoption/{operationCode}",
+            methods=[apigwv2.HttpMethod.GET],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
             path="/v1/mappings/canonical/operations",
             methods=[apigwv2.HttpMethod.GET],
             integration=registry_integration,
@@ -1103,6 +1133,46 @@ class DataPlaneStack(Stack):
         admin_api.add_routes(
             path="/v1/mappings/canonical/readiness/{operationCode}",
             methods=[apigwv2.HttpMethod.GET],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/mappings/canonical/onboarding-actions",
+            methods=[apigwv2.HttpMethod.GET],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/mappings/canonical/onboarding-actions/{operationCode}",
+            methods=[apigwv2.HttpMethod.GET],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/mappings/canonical/release-readiness",
+            methods=[apigwv2.HttpMethod.GET],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/mappings/canonical/release-readiness/report",
+            methods=[apigwv2.HttpMethod.POST],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/mappings/canonical/release-readiness/report/markdown",
+            methods=[apigwv2.HttpMethod.POST],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/mappings/canonical/release-bundle/candidates",
+            methods=[apigwv2.HttpMethod.GET],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/mappings/canonical/release-bundle",
+            methods=[apigwv2.HttpMethod.POST],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/mappings/canonical/release-bundle/markdown",
+            methods=[apigwv2.HttpMethod.POST],
             integration=registry_integration,
         )
         admin_api.add_routes(

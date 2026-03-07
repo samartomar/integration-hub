@@ -143,6 +143,114 @@ def _mappings_readiness_by_operation_event(operation_code: str) -> dict:
     }
 
 
+def _mappings_onboarding_actions_event(query_params: dict | None = None) -> dict:
+    """Build GET /v1/mappings/canonical/onboarding-actions event."""
+    return {
+        "path": "/v1/mappings/canonical/onboarding-actions",
+        "rawPath": "/v1/mappings/canonical/onboarding-actions",
+        "httpMethod": "GET",
+        "headers": {},
+        "queryStringParameters": query_params or {},
+        "pathParameters": {},
+        "requestContext": AUTH_REQUEST_CONTEXT,
+    }
+
+
+def _mappings_onboarding_actions_by_operation_event(operation_code: str) -> dict:
+    """Build GET /v1/mappings/canonical/onboarding-actions/{operationCode} event."""
+    return {
+        "path": f"/v1/mappings/canonical/onboarding-actions/{operation_code}",
+        "rawPath": f"/v1/mappings/canonical/onboarding-actions/{operation_code}",
+        "httpMethod": "GET",
+        "headers": {},
+        "queryStringParameters": {},
+        "pathParameters": {"operationCode": operation_code},
+        "requestContext": AUTH_REQUEST_CONTEXT,
+    }
+
+
+def _mappings_release_readiness_event(query_params: dict | None = None) -> dict:
+    """Build GET /v1/mappings/canonical/release-readiness event."""
+    return {
+        "path": "/v1/mappings/canonical/release-readiness",
+        "rawPath": "/v1/mappings/canonical/release-readiness",
+        "httpMethod": "GET",
+        "headers": {},
+        "queryStringParameters": query_params or {},
+        "pathParameters": {},
+        "requestContext": AUTH_REQUEST_CONTEXT,
+    }
+
+
+def _mappings_release_readiness_report_event(body: dict) -> dict:
+    """Build POST /v1/mappings/canonical/release-readiness/report event."""
+    return {
+        "path": "/v1/mappings/canonical/release-readiness/report",
+        "rawPath": "/v1/mappings/canonical/release-readiness/report",
+        "httpMethod": "POST",
+        "headers": {"content-type": "application/json"},
+        "body": json.dumps(body),
+        "queryStringParameters": {},
+        "pathParameters": {},
+        "requestContext": AUTH_REQUEST_CONTEXT,
+    }
+
+
+def _mappings_release_readiness_report_markdown_event(body: dict) -> dict:
+    """Build POST /v1/mappings/canonical/release-readiness/report/markdown event."""
+    return {
+        "path": "/v1/mappings/canonical/release-readiness/report/markdown",
+        "rawPath": "/v1/mappings/canonical/release-readiness/report/markdown",
+        "httpMethod": "POST",
+        "headers": {"content-type": "application/json"},
+        "body": json.dumps(body),
+        "queryStringParameters": {},
+        "pathParameters": {},
+        "requestContext": AUTH_REQUEST_CONTEXT,
+    }
+
+
+def _mappings_release_bundle_candidates_event(query_params: dict | None = None) -> dict:
+    """Build GET /v1/mappings/canonical/release-bundle/candidates event."""
+    return {
+        "path": "/v1/mappings/canonical/release-bundle/candidates",
+        "rawPath": "/v1/mappings/canonical/release-bundle/candidates",
+        "httpMethod": "GET",
+        "headers": {},
+        "queryStringParameters": query_params or {},
+        "pathParameters": {},
+        "requestContext": AUTH_REQUEST_CONTEXT,
+    }
+
+
+def _mappings_release_bundle_event(body: dict) -> dict:
+    """Build POST /v1/mappings/canonical/release-bundle event."""
+    return {
+        "path": "/v1/mappings/canonical/release-bundle",
+        "rawPath": "/v1/mappings/canonical/release-bundle",
+        "httpMethod": "POST",
+        "headers": {"content-type": "application/json"},
+        "body": json.dumps(body),
+        "queryStringParameters": {},
+        "pathParameters": {},
+        "requestContext": AUTH_REQUEST_CONTEXT,
+    }
+
+
+def _mappings_release_bundle_markdown_event(body: dict) -> dict:
+    """Build POST /v1/mappings/canonical/release-bundle/markdown event."""
+    return {
+        "path": "/v1/mappings/canonical/release-bundle/markdown",
+        "rawPath": "/v1/mappings/canonical/release-bundle/markdown",
+        "httpMethod": "POST",
+        "headers": {"content-type": "application/json"},
+        "body": json.dumps(body),
+        "queryStringParameters": {},
+        "pathParameters": {},
+        "requestContext": AUTH_REQUEST_CONTEXT,
+    }
+
+
 @patch("registry_lambda.require_admin_secret", return_value=None)
 def test_mappings_scaffold_bundle_success(_mock_auth: object) -> None:
     """POST /v1/mappings/canonical/scaffold-bundle returns scaffold bundle."""
@@ -270,6 +378,241 @@ def test_mappings_readiness_by_operation_unknown_returns_empty(_mock_auth: objec
     body = json.loads(result["body"])
     assert body["items"] == []
     assert body["summary"]["total"] == 0
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_onboarding_actions_success(_mock_auth: object) -> None:
+    """GET /v1/mappings/canonical/onboarding-actions returns readiness-derived action items."""
+    event = _mappings_onboarding_actions_event()
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert "items" in body
+    assert "summary" in body
+    assert body["summary"]["total"] >= 2
+    for item in body["items"]:
+        assert "nextAction" in item
+        assert "code" in item["nextAction"]
+        assert "title" in item["nextAction"]
+        assert "targetRoute" in item["nextAction"]
+        assert "prefill" in item["nextAction"]
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_onboarding_actions_filter_by_next_action(_mock_auth: object) -> None:
+    """GET /v1/mappings/canonical/onboarding-actions?nextAction= filters results."""
+    event = _mappings_onboarding_actions_event({"nextAction": "READY"})
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    for item in body["items"]:
+        assert item["nextAction"]["code"] == "READY"
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_onboarding_actions_by_operation_success(_mock_auth: object) -> None:
+    """GET /v1/mappings/canonical/onboarding-actions/{operationCode} returns actions for that op."""
+    event = _mappings_onboarding_actions_by_operation_event("GET_VERIFY_MEMBER_ELIGIBILITY")
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert "items" in body
+    assert all(
+        item["operationCode"] == "GET_VERIFY_MEMBER_ELIGIBILITY" for item in body["items"]
+    )
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_onboarding_actions_by_operation_unknown_returns_empty(_mock_auth: object) -> None:
+    """GET /v1/mappings/canonical/onboarding-actions/{operationCode} for unknown op returns empty."""
+    event = _mappings_onboarding_actions_by_operation_event("UNKNOWN_OPERATION")
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert body["items"] == []
+    assert body["summary"]["total"] == 0
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_release_readiness_success(_mock_auth: object) -> None:
+    """GET /v1/mappings/canonical/release-readiness returns release readiness items."""
+    event = _mappings_release_readiness_event()
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert "items" in body
+    assert "summary" in body
+    assert "readyForPromotion" in body["summary"]
+    assert "notReady" in body["summary"]
+    for item in body["items"]:
+        assert "readyForPromotion" in item
+        assert "blockers" in item
+        assert "evidence" in item
+        assert "releaseChecklist" in item
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_release_readiness_filter_by_ready_for_promotion(_mock_auth: object) -> None:
+    """GET /v1/mappings/canonical/release-readiness?readyForPromotion= filters results."""
+    event = _mappings_release_readiness_event({"readyForPromotion": "true"})
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    for item in body["items"]:
+        assert item["readyForPromotion"] is True
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_release_readiness_report_success(_mock_auth: object) -> None:
+    """POST /v1/mappings/canonical/release-readiness/report returns detailed report."""
+    body = {
+        "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+        "version": "1.0",
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+    }
+    event = _mappings_release_readiness_report_event(body)
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    resp = json.loads(result["body"])
+    assert resp.get("valid") is True
+    report = resp.get("report")
+    assert report is not None
+    assert report["operationCode"] == "GET_VERIFY_MEMBER_ELIGIBILITY"
+    assert "readyForPromotion" in report
+    assert "blockers" in report
+    assert "releaseChecklist" in report
+    assert "recommendedNextStep" in report
+    assert "markdown" in resp
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_release_readiness_report_markdown_success(_mock_auth: object) -> None:
+    """POST /v1/mappings/canonical/release-readiness/report/markdown returns markdown."""
+    body = {
+        "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+        "version": "1.0",
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+    }
+    event = _mappings_release_readiness_report_markdown_event(body)
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    resp = json.loads(result["body"])
+    assert "markdown" in resp
+    assert "GET_VERIFY_MEMBER_ELIGIBILITY" in resp["markdown"]
+    assert "Release Readiness" in resp["markdown"]
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_release_readiness_report_malformed_json_returns_400(_mock_auth: object) -> None:
+    """POST release-readiness/report with malformed JSON returns 400."""
+    event = _mappings_release_readiness_report_event({})
+    event["body"] = "not valid json {"
+    result = handler(event, None)
+    assert result["statusCode"] == 400
+    body = json.loads(result["body"])
+    assert "error" in body
+    assert body["error"]["code"] == "INVALID_JSON"
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_release_readiness_report_invalid_input_returns_400(_mock_auth: object) -> None:
+    """POST release-readiness/report with missing required fields returns 400."""
+    event = _mappings_release_readiness_report_event({})
+    result = handler(event, None)
+    assert result["statusCode"] == 400
+    resp = json.loads(result["body"])
+    assert "error" in resp
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_release_bundle_candidates_success(_mock_auth: object) -> None:
+    """GET /v1/mappings/canonical/release-bundle/candidates returns candidate items."""
+    event = _mappings_release_bundle_candidates_event()
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert "items" in body
+    assert "summary" in body
+    assert "notes" in body
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_release_bundle_success(_mock_auth: object) -> None:
+    """POST /v1/mappings/canonical/release-bundle returns structured bundle."""
+    body = {
+        "bundleName": "Release Candidate 2026-03-07",
+        "items": [
+            {
+                "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+                "version": "1.0",
+                "sourceVendor": "LH001",
+                "targetVendor": "LH002",
+            },
+        ],
+    }
+    event = _mappings_release_bundle_event(body)
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    resp = json.loads(result["body"])
+    assert resp.get("valid") is True
+    bundle = resp.get("bundle")
+    assert bundle is not None
+    assert bundle["bundleName"] == "Release Candidate 2026-03-07"
+    assert "summary" in bundle
+    assert "included" in bundle["summary"]
+    assert "items" in bundle
+    assert "impactedFiles" in bundle
+    assert "verificationChecklist" in bundle
+    assert "markdown" in resp
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_release_bundle_markdown_success(_mock_auth: object) -> None:
+    """POST /v1/mappings/canonical/release-bundle/markdown returns markdown artifact."""
+    body = {
+        "bundleName": "Test Bundle",
+        "items": [
+            {
+                "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+                "version": "1.0",
+                "sourceVendor": "LH001",
+                "targetVendor": "LH002",
+            },
+        ],
+    }
+    event = _mappings_release_bundle_markdown_event(body)
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    resp = json.loads(result["body"])
+    assert "markdown" in resp
+    assert "Test Bundle" in resp["markdown"]
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_release_bundle_malformed_json_returns_400(_mock_auth: object) -> None:
+    """POST release-bundle with malformed JSON returns 400."""
+    event = _mappings_release_bundle_event({"bundleName": "Test", "items": []})
+    event["body"] = "not valid json {"
+    result = handler(event, None)
+    assert result["statusCode"] == 400
+    body = json.loads(result["body"])
+    assert "error" in body
+    assert body["error"]["code"] == "INVALID_JSON"
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_release_bundle_invalid_items_returns_400(_mock_auth: object) -> None:
+    """POST release-bundle with invalid items returns 400."""
+    event = _mappings_release_bundle_event({
+        "bundleName": "Test",
+        "items": [{"operationCode": "OP", "sourceVendor": "A"}],
+    })
+    result = handler(event, None)
+    assert result["statusCode"] == 400
+    resp = json.loads(result["body"])
+    assert "error" in resp
 
 
 @patch("registry_lambda.require_admin_secret", return_value=None)

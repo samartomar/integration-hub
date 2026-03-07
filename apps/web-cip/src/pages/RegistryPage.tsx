@@ -883,10 +883,17 @@ function OperationsTab({
                         <button
                           type="button"
                           onClick={() => openContractDrawer(o)}
-                          className="text-slate-600 hover:text-slate-800 text-xs font-medium"
+                          className="text-slate-600 hover:text-slate-800 text-xs font-medium mr-2"
                         >
                           Contract
                         </button>
+                        <Link
+                          to={`/admin/adoption?operationCode=${encodeURIComponent(o.operationCode ?? "")}`}
+                          className="text-slate-600 hover:text-slate-800 text-xs font-medium"
+                          title="View adoption status"
+                        >
+                          Adoption
+                        </Link>
                       </td>
                     </tr>
                   ))

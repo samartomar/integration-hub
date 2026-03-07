@@ -104,9 +104,69 @@ function ResultPanel({ result }: { result: CanonicalBridgeResponse }) {
         </div>
       )}
 
+      {(result.mappingSummary ?? result.preflight?.mappingSummary) && (
+        <div>
+          <h3 className="text-sm font-medium text-gray-700 mb-2">Mapping summary</h3>
+          <div className="p-3 rounded-lg border border-gray-200 bg-slate-50 text-sm space-y-1">
+            <p>
+              <span className="font-medium">Available:</span>{" "}
+              {String(
+                (result.mappingSummary ?? result.preflight?.mappingSummary)?.available ?? false
+              )}
+            </p>
+            {(result.mappingSummary ?? result.preflight?.mappingSummary)?.direction && (
+              <p>
+                <span className="font-medium">Direction:</span>{" "}
+                {(result.mappingSummary ?? result.preflight?.mappingSummary)?.direction}
+              </p>
+            )}
+            {(result.mappingSummary ?? result.preflight?.mappingSummary)?.fieldMappings !=
+              null && (
+              <p>
+                <span className="font-medium">Field mappings:</span>{" "}
+                {(result.mappingSummary ?? result.preflight?.mappingSummary)?.fieldMappings}
+              </p>
+            )}
+            {(result.mappingSummary ?? result.preflight?.mappingSummary)?.warnings &&
+              (result.mappingSummary ?? result.preflight?.mappingSummary)!.warnings!.length >
+                0 && (
+              <p className="text-amber-700">
+                <span className="font-medium">Warnings:</span>{" "}
+                {(result.mappingSummary ?? result.preflight?.mappingSummary)!.warnings!.join(
+                  "; "
+                )}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {(result.vendorRequestPreview ?? result.preflight?.vendorRequestPreview) &&
+        Object.keys(
+          result.vendorRequestPreview ?? result.preflight?.vendorRequestPreview ?? {}
+        ).length > 0 && (
+          <JsonBlock
+            data={
+              (result.vendorRequestPreview ?? result.preflight?.vendorRequestPreview) as Record<
+                string,
+                unknown
+              >
+            }
+            label="Vendor request preview"
+          />
+        )}
+
       {result.executeRequestPreview && Object.keys(result.executeRequestPreview).length > 0 && (
         <JsonBlock data={result.executeRequestPreview} label="Execute request preview" />
       )}
+
+      {result.canonicalResponseEnvelope &&
+        Object.keys(result.canonicalResponseEnvelope).length > 0 && (
+          <JsonBlock
+            data={result.canonicalResponseEnvelope}
+            label="Canonical response envelope"
+          />
+        )}
 
       {result.executionPlan && (
         <div>

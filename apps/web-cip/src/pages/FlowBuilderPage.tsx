@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   listFlowCanonicalOperations,
@@ -43,6 +44,7 @@ function JsonBlock({
 }
 
 export function FlowBuilderPage() {
+  const [searchParams] = useSearchParams();
   const [selectedOp, setSelectedOp] = useState<CanonicalOperationItem | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [search, setSearch] = useState("");
@@ -74,6 +76,18 @@ export function FlowBuilderPage() {
   });
 
   const allItems = opsData?.items ?? [];
+  useEffect(() => {
+    const opCode = searchParams.get("operationCode");
+    const src = searchParams.get("sourceVendor");
+    const tgt = searchParams.get("targetVendor");
+    if (src) setDraft((d) => ({ ...d, sourceVendor: src }));
+    if (tgt) setDraft((d) => ({ ...d, targetVendor: tgt }));
+    if (opCode && allItems.length > 0) {
+      const op = allItems.find((o) => o.operationCode === opCode) ?? null;
+      if (op) setSelectedOp(op);
+    }
+  }, [searchParams, allItems]);
+
   const items = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return allItems;

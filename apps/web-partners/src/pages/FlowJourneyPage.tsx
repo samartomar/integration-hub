@@ -113,6 +113,17 @@ export function FlowJourneyPage() {
                   }`}
                 >
                   <Component />
+                  {isActive && i < MILESTONES.length - 1 && (
+                    <div className="mt-4 pt-4 border-t border-gray-200">
+                      <button
+                        type="button"
+                        onClick={() => scrollToIndex(i + 1)}
+                        className="text-sm font-medium text-teal-600 hover:text-teal-800"
+                      >
+                        Next: {MILESTONES[i + 1].label} →
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </section>

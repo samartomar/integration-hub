@@ -2154,6 +2154,295 @@ def _handle_get_mappings_canonical_readiness_by_operation(
         return _error(500, "INTERNAL_ERROR", str(e))
 
 
+def _handle_get_mappings_canonical_onboarding_actions(event: dict[str, Any]) -> dict[str, Any]:
+    """GET /v1/mappings/canonical/onboarding-actions - list readiness-derived onboarding actions."""
+    try:
+        from schema.mapping_onboarding_actions import list_mapping_onboarding_actions
+
+        qp = _parse_query_params(event)
+        filters: dict[str, Any] = {}
+        if qp.get("operationcode") or qp.get("operation_code"):
+            filters["operationCode"] = (qp.get("operationcode") or qp.get("operation_code") or "").strip()
+        if qp.get("sourcevendor") or qp.get("source_vendor"):
+            filters["sourceVendor"] = (qp.get("sourcevendor") or qp.get("source_vendor") or "").strip()
+        if qp.get("targetvendor") or qp.get("target_vendor"):
+            filters["targetVendor"] = (qp.get("targetvendor") or qp.get("target_vendor") or "").strip()
+        if qp.get("status"):
+            filters["status"] = qp.get("status", "").strip()
+        if qp.get("nextaction") or qp.get("next_action"):
+            filters["nextAction"] = (qp.get("nextaction") or qp.get("next_action") or "").strip()
+        result = list_mapping_onboarding_actions(filters)
+        return _success(200, result)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_get_mappings_canonical_onboarding_actions_by_operation(
+    event: dict[str, Any], operation_code: str
+) -> dict[str, Any]:
+    """GET /v1/mappings/canonical/onboarding-actions/{operationCode} - actions for operation."""
+    if not operation_code or not str(operation_code).strip():
+        return _error(400, "VALIDATION_ERROR", "operationCode is required")
+    try:
+        from schema.mapping_onboarding_actions import list_mapping_onboarding_actions
+
+        filters: dict[str, Any] = {"operationCode": str(operation_code).strip().upper()}
+        result = list_mapping_onboarding_actions(filters)
+        return _success(200, result)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_get_mappings_canonical_release_readiness(event: dict[str, Any]) -> dict[str, Any]:
+    """GET /v1/mappings/canonical/release-readiness - list release readiness, optionally filtered."""
+    try:
+        from schema.mapping_release_readiness import list_mapping_release_readiness
+
+        qp = _parse_query_params(event)
+        filters: dict[str, Any] = {}
+        if qp.get("operationcode") or qp.get("operation_code"):
+            filters["operationCode"] = (qp.get("operationcode") or qp.get("operation_code") or "").strip()
+        if qp.get("sourcevendor") or qp.get("source_vendor"):
+            filters["sourceVendor"] = (qp.get("sourcevendor") or qp.get("source_vendor") or "").strip()
+        if qp.get("targetvendor") or qp.get("target_vendor"):
+            filters["targetVendor"] = (qp.get("targetvendor") or qp.get("target_vendor") or "").strip()
+        if qp.get("status"):
+            filters["status"] = qp.get("status", "").strip()
+        if qp.get("readyforpromotion") or qp.get("ready_for_promotion"):
+            val = qp.get("readyforpromotion") or qp.get("ready_for_promotion")
+            filters["readyForPromotion"] = str(val).lower() in ("true", "1", "yes")
+        result = list_mapping_release_readiness(filters)
+        return _success(200, result)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_post_mappings_canonical_release_readiness_report(event: dict[str, Any]) -> dict[str, Any]:
+    """POST /v1/mappings/canonical/release-readiness/report - generate detailed release report."""
+    try:
+        from schema.mapping_release_readiness import build_mapping_release_readiness_report
+
+        try:
+            body = _parse_body_strict(event.get("body"))
+        except json.JSONDecodeError as e:
+            return _error(400, "INVALID_JSON", f"Malformed JSON body: {e}")
+        if not isinstance(body, dict):
+            return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+        result = build_mapping_release_readiness_report(body)
+        if not result.get("valid"):
+            notes = result.get("notes") or ["Invalid report request."]
+            return _error(400, "VALIDATION_ERROR", notes[0])
+        return _success(200, result)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_post_mappings_canonical_release_readiness_report_markdown(event: dict[str, Any]) -> dict[str, Any]:
+    """POST /v1/mappings/canonical/release-readiness/report/markdown - generate markdown report."""
+    try:
+        from schema.mapping_release_readiness import build_mapping_release_readiness_markdown
+
+        try:
+            body = _parse_body_strict(event.get("body"))
+        except json.JSONDecodeError as e:
+            return _error(400, "INVALID_JSON", f"Malformed JSON body: {e}")
+        if not isinstance(body, dict):
+            return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+        result = build_mapping_release_readiness_markdown(body)
+        if not result.get("valid"):
+            notes = result.get("notes") or ["Invalid report request."]
+            return _error(400, "VALIDATION_ERROR", notes[0])
+        return _success(200, {
+            "markdown": result.get("markdown", ""),
+            "reportId": result.get("reportId"),
+            "notes": result.get("notes", []),
+        })
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_get_mappings_canonical_release_bundle_candidates(event: dict[str, Any]) -> dict[str, Any]:
+    """GET /v1/mappings/canonical/release-bundle/candidates - list candidate mappings for bundle creation."""
+    try:
+        from schema.mapping_release_bundle import list_release_bundle_candidates
+
+        qp = _parse_query_params(event)
+        filters: dict[str, Any] = {}
+        if qp.get("operationcode") or qp.get("operation_code"):
+            filters["operationCode"] = (qp.get("operationcode") or qp.get("operation_code") or "").strip()
+        if qp.get("sourcevendor") or qp.get("source_vendor"):
+            filters["sourceVendor"] = (qp.get("sourcevendor") or qp.get("source_vendor") or "").strip()
+        if qp.get("targetvendor") or qp.get("target_vendor"):
+            filters["targetVendor"] = (qp.get("targetvendor") or qp.get("target_vendor") or "").strip()
+        if qp.get("status"):
+            filters["status"] = qp.get("status", "").strip()
+        if qp.get("readyforpromotion") or qp.get("ready_for_promotion"):
+            val = qp.get("readyforpromotion") or qp.get("ready_for_promotion")
+            filters["readyForPromotion"] = str(val).lower() in ("true", "1", "yes")
+        result = list_release_bundle_candidates(filters)
+        return _success(200, result)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_post_mappings_canonical_release_bundle(event: dict[str, Any]) -> dict[str, Any]:
+    """POST /v1/mappings/canonical/release-bundle - generate structured release bundle."""
+    try:
+        from schema.mapping_release_bundle import build_mapping_release_bundle
+
+        try:
+            body = _parse_body_strict(event.get("body"))
+        except json.JSONDecodeError as e:
+            return _error(400, "INVALID_JSON", f"Malformed JSON body: {e}")
+        if not isinstance(body, dict):
+            return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+        result = build_mapping_release_bundle(body)
+        if not result.get("valid"):
+            notes = result.get("notes") or ["Invalid bundle request."]
+            return _error(400, "VALIDATION_ERROR", notes[0])
+        return _success(200, result)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_post_mappings_canonical_release_bundle_markdown(event: dict[str, Any]) -> dict[str, Any]:
+    """POST /v1/mappings/canonical/release-bundle/markdown - generate markdown release artifact."""
+    try:
+        from schema.mapping_release_bundle import build_mapping_release_bundle, build_mapping_release_bundle_markdown
+
+        try:
+            body = _parse_body_strict(event.get("body"))
+        except json.JSONDecodeError as e:
+            return _error(400, "INVALID_JSON", f"Malformed JSON body: {e}")
+        if not isinstance(body, dict):
+            return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+        result = build_mapping_release_bundle(body)
+        if not result.get("valid"):
+            notes = result.get("notes") or ["Invalid bundle request."]
+            return _error(400, "VALIDATION_ERROR", notes[0])
+        bundle = result.get("bundle")
+        markdown = build_mapping_release_bundle_markdown(bundle) if bundle else ""
+        return _success(200, {
+            "markdown": markdown,
+            "bundleId": (bundle or {}).get("bundleId"),
+            "notes": result.get("notes", []),
+        })
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_get_syntegris_diagnostics(_event: dict[str, Any]) -> dict[str, Any]:
+    """GET /v1/syntegris/diagnostics - configuration self-check for Syntegris features."""
+    try:
+        from shared.feature_runtime_diagnostics import get_syntegris_feature_diagnostics
+
+        result = get_syntegris_feature_diagnostics()
+        return _success(200, result)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_get_syntegris_inventory(event: dict[str, Any]) -> dict[str, Any]:
+    """GET /v1/syntegris/inventory - list integration inventory with filters."""
+    try:
+        from schema.integration_inventory import list_integration_inventory
+
+        qp = _parse_query_params(event)
+        filters: dict[str, Any] = {}
+        if qp.get("operationcode") or qp.get("operation_code"):
+            filters["operationCode"] = (qp.get("operationcode") or qp.get("operation_code") or "").strip()
+        if qp.get("sourcevendor") or qp.get("source_vendor"):
+            filters["sourceVendor"] = (qp.get("sourcevendor") or qp.get("source_vendor") or "").strip()
+        if qp.get("targetvendor") or qp.get("target_vendor"):
+            filters["targetVendor"] = (qp.get("targetvendor") or qp.get("target_vendor") or "").strip()
+        if qp.get("hasallowlist") is not None:
+            filters["hasAllowlist"] = str(qp.get("hasallowlist", "")).lower() in ("true", "1", "yes")
+        if qp.get("hasoperationcontract") is not None:
+            filters["hasOperationContract"] = str(qp.get("hasoperationcontract", "")).lower() in ("true", "1", "yes")
+        if qp.get("hasvendormapping") is not None:
+            filters["hasVendorMapping"] = str(qp.get("hasvendormapping", "")).lower() in ("true", "1", "yes")
+        if qp.get("hasendpointconfig") is not None:
+            filters["hasEndpointConfig"] = str(qp.get("hasendpointconfig", "")).lower() in ("true", "1", "yes")
+
+        with _get_connection() as conn:
+            result = list_integration_inventory(conn, filters)
+        return _success(200, result)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_get_syntegris_inventory_by_operation(
+    event: dict[str, Any], operation_code: str
+) -> dict[str, Any]:
+    """GET /v1/syntegris/inventory/{operationCode} - inventory for operation across vendor pairs."""
+    if not operation_code or not str(operation_code).strip():
+        return _error(400, "VALIDATION_ERROR", "operationCode is required")
+    try:
+        from schema.integration_inventory import list_integration_inventory
+
+        filters: dict[str, Any] = {"operationCode": str(operation_code).strip().upper()}
+        with _get_connection() as conn:
+            result = list_integration_inventory(conn, filters)
+        return _success(200, result)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_get_syntegris_adoption(event: dict[str, Any]) -> dict[str, Any]:
+    """GET /v1/syntegris/adoption - list Syntegris adoption classification with filters."""
+    try:
+        from schema.syntegris_adoption import list_syntegris_adoption
+
+        qp = _parse_query_params(event)
+        filters: dict[str, Any] = {}
+        if qp.get("operationcode") or qp.get("operation_code"):
+            filters["operationCode"] = (qp.get("operationcode") or qp.get("operation_code") or "").strip()
+        if qp.get("sourcevendor") or qp.get("source_vendor"):
+            filters["sourceVendor"] = (qp.get("sourcevendor") or qp.get("source_vendor") or "").strip()
+        if qp.get("targetvendor") or qp.get("target_vendor"):
+            filters["targetVendor"] = (qp.get("targetvendor") or qp.get("target_vendor") or "").strip()
+        if qp.get("adoptionstatus") or qp.get("adoption_status"):
+            filters["adoptionStatus"] = (qp.get("adoptionstatus") or qp.get("adoption_status") or "").strip()
+        if qp.get("nextaction") or qp.get("next_action"):
+            filters["nextAction"] = (qp.get("nextaction") or qp.get("next_action") or "").strip()
+
+        with _get_connection() as conn:
+            result = list_syntegris_adoption(conn, filters)
+        return _success(200, result)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_get_syntegris_adoption_summary(_event: dict[str, Any]) -> dict[str, Any]:
+    """GET /v1/syntegris/adoption/summary - adoption summary counts."""
+    try:
+        from schema.syntegris_adoption import list_syntegris_adoption, summarize_syntegris_adoption
+
+        with _get_connection() as conn:
+            result = list_syntegris_adoption(conn, {})
+        summary = summarize_syntegris_adoption(result.get("items") or [])
+        return _success(200, {"summary": summary, "notes": result.get("notes", [])})
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_get_syntegris_adoption_by_operation(
+    event: dict[str, Any], operation_code: str
+) -> dict[str, Any]:
+    """GET /v1/syntegris/adoption/{operationCode} - adoption for operation across vendor pairs."""
+    if not operation_code or not str(operation_code).strip():
+        return _error(400, "VALIDATION_ERROR", "operationCode is required")
+    try:
+        from schema.syntegris_adoption import list_syntegris_adoption
+
+        filters: dict[str, Any] = {"operationCode": str(operation_code).strip().upper()}
+        with _get_connection() as conn:
+            result = list_syntegris_adoption(conn, filters)
+        return _success(200, result)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
 def _handle_get_mappings_canonical_fixtures(event: dict[str, Any]) -> dict[str, Any]:
     """GET /v1/mappings/canonical/fixtures - list available fixture sets / operations / directions."""
     try:
@@ -4865,6 +5154,99 @@ def _handler_impl(event: dict[str, Any], context: object) -> dict[str, Any]:
         if not decision.allow:
             return add_cors_to_response(policy_denied_response(decision))
 
+    # Require JWT authorizer for all /v1/syntegris/* GET
+    if len(segments) >= 2 and segments[:2] == ["v1", "syntegris"]:
+        auth_err = require_admin_secret(event)
+        is_admin = auth_err is None
+        if auth_err is not None:
+            return add_cors_to_response(auth_err)
+        decision = evaluate_policy(
+            PolicyContext(
+                surface="ADMIN",
+                action="REGISTRY_READ",
+                vendor_code="ADMIN" if is_admin else None,
+                target_vendor_code=None,
+                operation_code=None,
+                requested_source_vendor_code=None,
+                is_admin=is_admin,
+                groups=[],
+                query={},
+            )
+        )
+        if not decision.allow:
+            return add_cors_to_response(policy_denied_response(decision))
+
+    # Require JWT authorizer for /v1/syntegris/* (admin-only)
+    if len(segments) >= 2 and segments[:2] == ["v1", "syntegris"]:
+        auth_err = require_admin_secret(event)
+        if auth_err is not None:
+            return add_cors_to_response(auth_err)
+        decision = evaluate_policy(
+            PolicyContext(
+                surface="ADMIN",
+                action="REGISTRY_READ",
+                vendor_code="ADMIN",
+                target_vendor_code=None,
+                operation_code=None,
+                requested_source_vendor_code=None,
+                is_admin=True,
+                groups=[],
+                query={},
+            )
+        )
+        if not decision.allow:
+            return add_cors_to_response(policy_denied_response(decision))
+
+    # GET /v1/syntegris/diagnostics - configuration self-check
+    if (
+        len(segments) == 3
+        and segments[:3] == ["v1", "syntegris", "diagnostics"]
+        and event.get("httpMethod") == "GET"
+    ):
+        return _handle_get_syntegris_diagnostics(event)
+
+    # GET /v1/syntegris/inventory - list integration inventory
+    if (
+        len(segments) == 3
+        and segments[:3] == ["v1", "syntegris", "inventory"]
+        and event.get("httpMethod") == "GET"
+    ):
+        return _handle_get_syntegris_inventory(event)
+
+    # GET /v1/syntegris/inventory/{operationCode}
+    if (
+        len(segments) == 4
+        and segments[:3] == ["v1", "syntegris", "inventory"]
+        and event.get("httpMethod") == "GET"
+    ):
+        operation_code = segments[3] or (event.get("pathParameters") or {}).get("operationCode")
+        return _handle_get_syntegris_inventory_by_operation(event, operation_code)
+
+    # GET /v1/syntegris/adoption/summary - must precede adoption/{operationCode}
+    if (
+        len(segments) == 4
+        and segments[:4] == ["v1", "syntegris", "adoption", "summary"]
+        and event.get("httpMethod") == "GET"
+    ):
+        return _handle_get_syntegris_adoption_summary(event)
+
+    # GET /v1/syntegris/adoption/{operationCode}
+    if (
+        len(segments) == 4
+        and segments[:3] == ["v1", "syntegris", "adoption"]
+        and event.get("httpMethod") == "GET"
+    ):
+        operation_code = segments[3] or (event.get("pathParameters") or {}).get("operationCode")
+        return _handle_get_syntegris_adoption_by_operation(event, operation_code)
+
+    # GET /v1/syntegris/adoption - list adoption classification
+    if (
+        len(segments) == 3
+        and segments[:3] == ["v1", "syntegris", "adoption"]
+        and event.get("httpMethod") == "GET"
+    ):
+        return _handle_get_syntegris_adoption(event)
+
     # Require JWT authorizer for all /v1/flow/* GET and POST
     if len(segments) >= 2 and segments[:2] == ["v1", "flow"]:
         auth_err = require_admin_secret(event)
@@ -4982,6 +5364,71 @@ def _handler_impl(event: dict[str, Any], context: object) -> dict[str, Any]:
         and event.get("httpMethod") == "GET"
     ):
         return _handle_get_mappings_canonical_readiness(event)
+
+    # GET /v1/mappings/canonical/onboarding-actions/{operationCode} - actions for operation
+    if (
+        len(segments) == 5
+        and segments[:4] == ["v1", "mappings", "canonical", "onboarding-actions"]
+        and event.get("httpMethod") == "GET"
+    ):
+        operation_code = segments[4] or (event.get("pathParameters") or {}).get("operationCode")
+        return _handle_get_mappings_canonical_onboarding_actions_by_operation(event, operation_code or "")
+
+    # GET /v1/mappings/canonical/onboarding-actions - list onboarding actions with filters
+    if (
+        len(segments) == 4
+        and segments[:4] == ["v1", "mappings", "canonical", "onboarding-actions"]
+        and event.get("httpMethod") == "GET"
+    ):
+        return _handle_get_mappings_canonical_onboarding_actions(event)
+
+    # GET /v1/mappings/canonical/release-bundle/candidates - list bundle candidates
+    if (
+        len(segments) == 5
+        and segments[:5] == ["v1", "mappings", "canonical", "release-bundle", "candidates"]
+        and event.get("httpMethod") == "GET"
+    ):
+        return _handle_get_mappings_canonical_release_bundle_candidates(event)
+
+    # POST /v1/mappings/canonical/release-bundle/markdown - generate markdown artifact
+    if (
+        len(segments) == 5
+        and segments[:5] == ["v1", "mappings", "canonical", "release-bundle", "markdown"]
+        and event.get("httpMethod") == "POST"
+    ):
+        return _handle_post_mappings_canonical_release_bundle_markdown(event)
+
+    # POST /v1/mappings/canonical/release-bundle - generate structured bundle
+    if (
+        len(segments) == 4
+        and segments[:4] == ["v1", "mappings", "canonical", "release-bundle"]
+        and event.get("httpMethod") == "POST"
+    ):
+        return _handle_post_mappings_canonical_release_bundle(event)
+
+    # POST /v1/mappings/canonical/release-readiness/report/markdown - generate markdown report
+    if (
+        len(segments) == 6
+        and segments[:6] == ["v1", "mappings", "canonical", "release-readiness", "report", "markdown"]
+        and event.get("httpMethod") == "POST"
+    ):
+        return _handle_post_mappings_canonical_release_readiness_report_markdown(event)
+
+    # POST /v1/mappings/canonical/release-readiness/report - generate release report
+    if (
+        len(segments) == 5
+        and segments[:5] == ["v1", "mappings", "canonical", "release-readiness", "report"]
+        and event.get("httpMethod") == "POST"
+    ):
+        return _handle_post_mappings_canonical_release_readiness_report(event)
+
+    # GET /v1/mappings/canonical/release-readiness - list release readiness with filters
+    if (
+        len(segments) == 4
+        and segments[:4] == ["v1", "mappings", "canonical", "release-readiness"]
+        and event.get("httpMethod") == "GET"
+    ):
+        return _handle_get_mappings_canonical_release_readiness(event)
 
     # POST /v1/mappings/canonical/certify - run certification
     if (

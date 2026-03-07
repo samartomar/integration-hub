@@ -1078,6 +1078,394 @@ export async function getCanonicalMappingReadiness(
   return data;
 }
 
+// --- Mapping Onboarding Actions (readiness-driven workbench) ---
+
+/** Next action for onboarding */
+export interface MappingOnboardingNextAction {
+  code: string;
+  title: string;
+  description: string;
+  targetRoute: string;
+  prefill: {
+    operationCode: string;
+    version: string;
+    sourceVendor: string;
+    targetVendor: string;
+  };
+}
+
+/** Onboarding action item (readiness + nextAction) */
+export interface MappingOnboardingActionItem extends MappingReadinessItem {
+  nextAction: MappingOnboardingNextAction;
+}
+
+/** Onboarding actions response */
+export interface MappingOnboardingActionResponse {
+  items: MappingOnboardingActionItem[];
+  summary: MappingReadinessSummary;
+  notes: string[];
+}
+
+/** GET /v1/mappings/canonical/onboarding-actions */
+export async function listCanonicalMappingOnboardingActions(params?: {
+  operationCode?: string;
+  sourceVendor?: string;
+  targetVendor?: string;
+  status?: string;
+  nextAction?: string;
+}): Promise<MappingOnboardingActionResponse> {
+  const search = new URLSearchParams();
+  if (params?.operationCode) search.set("operationCode", params.operationCode);
+  if (params?.sourceVendor) search.set("sourceVendor", params.sourceVendor);
+  if (params?.targetVendor) search.set("targetVendor", params.targetVendor);
+  if (params?.status) search.set("status", params.status);
+  if (params?.nextAction) search.set("nextAction", params.nextAction);
+  const qs = search.toString();
+  const { data } = await adminApi.get<MappingOnboardingActionResponse>(
+    `/v1/mappings/canonical/onboarding-actions${qs ? `?${qs}` : ""}`
+  );
+  return data;
+}
+
+/** GET /v1/mappings/canonical/onboarding-actions/{operationCode} */
+export async function getCanonicalMappingOnboardingActions(
+  operationCode: string
+): Promise<MappingOnboardingActionResponse> {
+  const { data } = await adminApi.get<MappingOnboardingActionResponse>(
+    `/v1/mappings/canonical/onboarding-actions/${encodeURIComponent(operationCode)}`
+  );
+  return data;
+}
+
+// --- Mapping Release Readiness (release confidence reporting) ---
+
+/** Release readiness item */
+export interface MappingReleaseReadinessItem {
+  operationCode: string;
+  version: string;
+  sourceVendor: string;
+  targetVendor: string;
+  readyForPromotion: boolean;
+  status: string;
+  blockers: string[];
+  evidence: {
+    mappingDefinition: boolean;
+    fixtures: boolean;
+    certification: boolean;
+    runtimeReady: boolean;
+  };
+  releaseChecklist: string[];
+  notes: string[];
+}
+
+/** Release readiness summary */
+export interface MappingReleaseReadinessSummary {
+  total: number;
+  readyForPromotion: number;
+  notReady: number;
+}
+
+/** Release readiness list response */
+export interface MappingReleaseReadinessResponse {
+  items: MappingReleaseReadinessItem[];
+  summary: MappingReleaseReadinessSummary;
+  notes: string[];
+}
+
+/** Release readiness report */
+export interface MappingReleaseReadinessReport {
+  reportId: string;
+  operationCode: string;
+  version: string;
+  sourceVendor: string;
+  targetVendor: string;
+  status: string;
+  readyForPromotion: boolean;
+  blockers: string[];
+  evidence: Record<string, boolean>;
+  releaseChecklist: string[];
+  recommendedNextStep: string;
+  notes: string[];
+}
+
+/** Release report response */
+export interface MappingReleaseReportResponse {
+  valid: boolean;
+  report: MappingReleaseReadinessReport | null;
+  markdown?: string;
+  notes: string[];
+}
+
+/** GET /v1/mappings/canonical/release-readiness */
+export async function listCanonicalMappingReleaseReadiness(params?: {
+  operationCode?: string;
+  sourceVendor?: string;
+  targetVendor?: string;
+  status?: string;
+  readyForPromotion?: boolean;
+}): Promise<MappingReleaseReadinessResponse> {
+  const search = new URLSearchParams();
+  if (params?.operationCode) search.set("operationCode", params.operationCode);
+  if (params?.sourceVendor) search.set("sourceVendor", params.sourceVendor);
+  if (params?.targetVendor) search.set("targetVendor", params.targetVendor);
+  if (params?.status) search.set("status", params.status);
+  if (params?.readyForPromotion != null)
+    search.set("readyForPromotion", String(params.readyForPromotion));
+  const qs = search.toString();
+  const { data } = await adminApi.get<MappingReleaseReadinessResponse>(
+    `/v1/mappings/canonical/release-readiness${qs ? `?${qs}` : ""}`
+  );
+  return data;
+}
+
+/** POST /v1/mappings/canonical/release-readiness/report */
+export async function generateCanonicalMappingReleaseReport(payload: {
+  operationCode: string;
+  version?: string;
+  sourceVendor: string;
+  targetVendor: string;
+}): Promise<MappingReleaseReportResponse> {
+  const { data } = await adminApi.post<MappingReleaseReportResponse>(
+    "/v1/mappings/canonical/release-readiness/report",
+    payload
+  );
+  return data;
+}
+
+/** POST /v1/mappings/canonical/release-readiness/report/markdown */
+export async function generateCanonicalMappingReleaseMarkdown(payload: {
+  operationCode: string;
+  version?: string;
+  sourceVendor: string;
+  targetVendor: string;
+}): Promise<{ valid: boolean; markdown: string; reportId?: string; notes: string[] }> {
+  const { data } = await adminApi.post<{
+    valid: boolean;
+    markdown: string;
+    reportId?: string;
+    notes: string[];
+  }>("/v1/mappings/canonical/release-readiness/report/markdown", payload);
+  return data;
+}
+
+// --- Release Bundle ---
+
+export interface MappingReleaseBundleItem {
+  operationCode: string;
+  version: string;
+  sourceVendor: string;
+  targetVendor: string;
+  readyForPromotion: boolean;
+  status: string;
+  targetDefinitionFile?: string;
+  evidence?: Record<string, boolean>;
+  blockers?: string[];
+}
+
+export interface MappingReleaseBundle {
+  bundleId: string;
+  bundleName: string;
+  createdAt: string;
+  summary: { included: number; ready: number; blocked: number; status: string };
+  items: MappingReleaseBundleItem[];
+  impactedFiles: string[];
+  verificationChecklist: string[];
+  notes: string[];
+}
+
+export interface MappingReleaseBundleResponse {
+  valid: boolean;
+  bundle: MappingReleaseBundle | null;
+  markdown?: string;
+  notes: string[];
+}
+
+/** GET /v1/mappings/canonical/release-bundle/candidates */
+export async function listCanonicalReleaseBundleCandidates(params?: {
+  operationCode?: string;
+  sourceVendor?: string;
+  targetVendor?: string;
+  status?: string;
+  readyForPromotion?: boolean;
+}): Promise<{ items: MappingReleaseBundleItem[]; summary: Record<string, number>; notes: string[] }> {
+  const search = new URLSearchParams();
+  if (params?.operationCode) search.set("operationCode", params.operationCode);
+  if (params?.sourceVendor) search.set("sourceVendor", params.sourceVendor);
+  if (params?.targetVendor) search.set("targetVendor", params.targetVendor);
+  if (params?.status) search.set("status", params.status);
+  if (params?.readyForPromotion != null)
+    search.set("readyForPromotion", String(params.readyForPromotion));
+  const qs = search.toString();
+  const { data } = await adminApi.get<{
+    items: MappingReleaseBundleItem[];
+    summary: Record<string, number>;
+    notes: string[];
+  }>(`/v1/mappings/canonical/release-bundle/candidates${qs ? `?${qs}` : ""}`);
+  return data;
+}
+
+/** POST /v1/mappings/canonical/release-bundle */
+export async function generateCanonicalReleaseBundle(payload: {
+  bundleName: string;
+  items: Array<{ operationCode: string; version?: string; sourceVendor: string; targetVendor: string }>;
+}): Promise<MappingReleaseBundleResponse> {
+  const { data } = await adminApi.post<MappingReleaseBundleResponse>(
+    "/v1/mappings/canonical/release-bundle",
+    payload
+  );
+  return data;
+}
+
+/** POST /v1/mappings/canonical/release-bundle/markdown */
+export async function generateCanonicalReleaseBundleMarkdown(payload: {
+  bundleName: string;
+  items: Array<{ operationCode: string; version?: string; sourceVendor: string; targetVendor: string }>;
+}): Promise<{ valid: boolean; markdown: string; bundleId?: string; notes: string[] }> {
+  const { data } = await adminApi.post<{
+    valid: boolean;
+    markdown: string;
+    bundleId?: string;
+    notes: string[];
+  }>("/v1/mappings/canonical/release-bundle/markdown", payload);
+  return data;
+}
+
+// --- Syntegris Adoption Workbench (inventory + adoption classification) ---
+
+export interface IntegrationInventoryItem {
+  operationCode: string;
+  version: string;
+  sourceVendor: string;
+  targetVendor: string;
+  inventoryEvidence: {
+    operationExists: boolean;
+    allowlistExists: boolean;
+    operationContractExists: boolean;
+    vendorMappingExists: boolean;
+    endpointConfigExists: boolean;
+  };
+  notes: string[];
+}
+
+export interface IntegrationInventoryResponse {
+  items: IntegrationInventoryItem[];
+  summary: { total: number; withFullEvidence: number; partial: number };
+  notes: string[];
+}
+
+export interface SyntegrisAdoptionItem {
+  operationCode: string;
+  version: string;
+  sourceVendor: string;
+  targetVendor: string;
+  adoptionStatus: string;
+  inventoryEvidence: Record<string, boolean>;
+  syntegrisEvidence: {
+    canonicalDefined: boolean;
+    mappingReady: boolean;
+    releaseReady: boolean;
+    runtimeIntegrated: boolean;
+  };
+  nextAction: { code: string; title: string; targetRoute: string };
+  notes: string[];
+}
+
+export interface SyntegrisAdoptionSummary {
+  total: number;
+  legacyOnly: number;
+  canonDefined: number;
+  mappingInProgress: number;
+  certified: number;
+  releaseReady: number;
+  syntegrisReady: number;
+  blocked: number;
+}
+
+export interface SyntegrisAdoptionResponse {
+  items: SyntegrisAdoptionItem[];
+  summary: SyntegrisAdoptionSummary;
+  notes: string[];
+}
+
+/** GET /v1/syntegris/inventory */
+export async function listSyntegrisInventory(params?: {
+  operationCode?: string;
+  sourceVendor?: string;
+  targetVendor?: string;
+  hasAllowlist?: boolean;
+  hasOperationContract?: boolean;
+  hasVendorMapping?: boolean;
+  hasEndpointConfig?: boolean;
+}): Promise<IntegrationInventoryResponse> {
+  const search = new URLSearchParams();
+  if (params?.operationCode) search.set("operationCode", params.operationCode);
+  if (params?.sourceVendor) search.set("sourceVendor", params.sourceVendor);
+  if (params?.targetVendor) search.set("targetVendor", params.targetVendor);
+  if (params?.hasAllowlist != null) search.set("hasAllowlist", String(params.hasAllowlist));
+  if (params?.hasOperationContract != null)
+    search.set("hasOperationContract", String(params.hasOperationContract));
+  if (params?.hasVendorMapping != null) search.set("hasVendorMapping", String(params.hasVendorMapping));
+  if (params?.hasEndpointConfig != null)
+    search.set("hasEndpointConfig", String(params.hasEndpointConfig));
+  const qs = search.toString();
+  const { data } = await adminApi.get<IntegrationInventoryResponse>(
+    `/v1/syntegris/inventory${qs ? `?${qs}` : ""}`
+  );
+  return data;
+}
+
+/** GET /v1/syntegris/inventory/{operationCode} */
+export async function listSyntegrisInventoryByOperation(
+  operationCode: string
+): Promise<IntegrationInventoryResponse> {
+  const { data } = await adminApi.get<IntegrationInventoryResponse>(
+    `/v1/syntegris/inventory/${encodeURIComponent(operationCode)}`
+  );
+  return data;
+}
+
+/** GET /v1/syntegris/adoption */
+export async function listSyntegrisAdoption(params?: {
+  operationCode?: string;
+  sourceVendor?: string;
+  targetVendor?: string;
+  adoptionStatus?: string;
+  nextAction?: string;
+}): Promise<SyntegrisAdoptionResponse> {
+  const search = new URLSearchParams();
+  if (params?.operationCode) search.set("operationCode", params.operationCode);
+  if (params?.sourceVendor) search.set("sourceVendor", params.sourceVendor);
+  if (params?.targetVendor) search.set("targetVendor", params.targetVendor);
+  if (params?.adoptionStatus) search.set("adoptionStatus", params.adoptionStatus);
+  if (params?.nextAction) search.set("nextAction", params.nextAction);
+  const qs = search.toString();
+  const { data } = await adminApi.get<SyntegrisAdoptionResponse>(
+    `/v1/syntegris/adoption${qs ? `?${qs}` : ""}`
+  );
+  return data;
+}
+
+/** GET /v1/syntegris/adoption/summary */
+export async function getSyntegrisAdoptionSummary(): Promise<{
+  summary: SyntegrisAdoptionSummary;
+  notes: string[];
+}> {
+  const { data } = await adminApi.get<{ summary: SyntegrisAdoptionSummary; notes: string[] }>(
+    "/v1/syntegris/adoption/summary"
+  );
+  return data;
+}
+
+/** GET /v1/syntegris/adoption/{operationCode} */
+export async function listSyntegrisAdoptionByOperation(
+  operationCode: string
+): Promise<SyntegrisAdoptionResponse> {
+  const { data } = await adminApi.get<SyntegrisAdoptionResponse>(
+    `/v1/syntegris/adoption/${encodeURIComponent(operationCode)}`
+  );
+  return data;
+}
+
 // --- Sandbox (canonical-driven, mock-only) ---
 
 /** GET /v1/sandbox/canonical/operations */

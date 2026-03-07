@@ -1100,6 +1100,14 @@ export interface CanonicalRuntimePreflightPayload {
   };
 }
 
+/** Mapping summary (mapping-aware preflight/execute) */
+export interface MappingSummary {
+  available?: boolean;
+  direction?: string;
+  fieldMappings?: number;
+  warnings?: string[];
+}
+
 /** Runtime Preflight response */
 export interface CanonicalRuntimePreflightResponse {
   valid: boolean;
@@ -1109,6 +1117,8 @@ export interface CanonicalRuntimePreflightResponse {
   sourceVendor?: string;
   targetVendor?: string;
   normalizedEnvelope?: Record<string, unknown>;
+  mappingSummary?: MappingSummary;
+  vendorRequestPreview?: Record<string, unknown>;
   checks?: Array<{ code: string; status: string; message: string }>;
   executionPlan?: { mode: string; canExecute: boolean; nextStep?: string };
   errors?: Array<{ field: string; message: string }>;
@@ -1141,6 +1151,9 @@ export interface CanonicalBridgeResponse {
   sourceVendor?: string;
   targetVendor?: string;
   normalizedEnvelope?: Record<string, unknown>;
+  mappingSummary?: MappingSummary;
+  vendorRequestPreview?: Record<string, unknown>;
+  canonicalResponseEnvelope?: Record<string, unknown>;
   preflight?: CanonicalRuntimePreflightResponse;
   executeRequestPreview?: Record<string, unknown>;
   executionPlan?: { canExecute?: boolean; reason?: string };

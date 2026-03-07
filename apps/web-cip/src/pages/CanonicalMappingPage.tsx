@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useLocation, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   listCanonicalMappingOperations,
@@ -87,8 +88,37 @@ export function CanonicalMappingPage() {
 
   const items = opsData?.items ?? [];
   const hasSelection = !!selectedOp;
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
 
   useEffect(() => {
+    const prefill =
+      (location.state as { prefill?: { operationCode?: string; version?: string; sourceVendor?: string; targetVendor?: string } } | null)
+        ?.prefill ?? null;
+    const opFromQ = searchParams.get("operationCode");
+    const srcFromQ = searchParams.get("sourceVendor");
+    const tgtFromQ = searchParams.get("targetVendor");
+    const verFromQ = searchParams.get("version");
+    const fromState = prefill?.operationCode || opFromQ;
+    const src = prefill?.sourceVendor || srcFromQ || "";
+    const tgt = prefill?.targetVendor || tgtFromQ || "";
+    const ver = prefill?.version || verFromQ || "1.0";
+    if (fromState && items.length > 0) {
+      const opCode = (fromState as string).trim().toUpperCase();
+      const op = items.find(
+        (o) => (o.operationCode || "").toUpperCase() === opCode && (o.version || "1.0") === (ver || "1.0")
+      );
+      if (op) {
+        setSelectedOp(op);
+      }
+      if (src) setSourceVendor(src);
+      if (tgt) setTargetVendor(tgt);
+    }
+  }, [location.state, searchParams, items]);
+
+  useEffect(() => {
+    const prefill = (location.state as { prefill?: object } | null)?.prefill;
+    if (prefill) return;
     if (selectedOp && items.length > 0) {
       const op = items.find(
         (o) => o.operationCode === selectedOp.operationCode && o.version === selectedOp.version
@@ -99,7 +129,7 @@ export function CanonicalMappingPage() {
         setTargetVendor(pair.targetVendor || "LH002");
       }
     }
-  }, [selectedOp, items]);
+  }, [selectedOp, items, location.state]);
 
   const getExampleForDirection = useCallback(() => {
     if (!selectedOp) return {};
