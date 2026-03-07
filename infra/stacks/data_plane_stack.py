@@ -1096,6 +1096,16 @@ class DataPlaneStack(Stack):
             integration=registry_integration,
         )
         admin_api.add_routes(
+            path="/v1/mappings/canonical/readiness",
+            methods=[apigwv2.HttpMethod.GET],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/mappings/canonical/readiness/{operationCode}",
+            methods=[apigwv2.HttpMethod.GET],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
             path="/v1/mappings/canonical/preview",
             methods=[apigwv2.HttpMethod.POST],
             integration=registry_integration,
@@ -1122,6 +1132,26 @@ class DataPlaneStack(Stack):
         )
         admin_api.add_routes(
             path="/v1/mappings/canonical/proposal-package/markdown",
+            methods=[apigwv2.HttpMethod.POST],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/mappings/canonical/fixtures",
+            methods=[apigwv2.HttpMethod.GET],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/mappings/canonical/certify",
+            methods=[apigwv2.HttpMethod.POST],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/mappings/canonical/scaffold-bundle",
+            methods=[apigwv2.HttpMethod.POST],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/mappings/canonical/scaffold-bundle/markdown",
             methods=[apigwv2.HttpMethod.POST],
             integration=registry_integration,
         )

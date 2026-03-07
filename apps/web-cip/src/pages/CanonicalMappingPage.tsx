@@ -10,12 +10,17 @@ import {
   generateCanonicalMappingProposalMarkdown,
   generateCanonicalMappingPromotionArtifact,
   generateCanonicalMappingPromotionMarkdown,
+  certifyCanonicalMapping,
+  generateCanonicalMappingScaffoldBundle,
+  generateCanonicalMappingScaffoldMarkdown,
   type CanonicalMappingOperationItem,
   type CanonicalMappingPreviewResponse,
   type CanonicalMappingValidateResponse,
   type CanonicalMappingSuggestResponse,
   type MappingProposalResponse,
   type MappingPromotionResponse,
+  type MappingCertificationResponse,
+  type MappingScaffoldResponse,
 } from "../api/endpoints";
 
 function JsonBlock({
@@ -68,6 +73,12 @@ export function CanonicalMappingPage() {
   const [promotionMarkdown, setPromotionMarkdown] = useState<string | null>(null);
   const [isGeneratingPromotionArtifact, setIsGeneratingPromotionArtifact] = useState(false);
   const [isGeneratingPromotionMarkdown, setIsGeneratingPromotionMarkdown] = useState(false);
+  const [certificationResult, setCertificationResult] = useState<MappingCertificationResponse | null>(null);
+  const [isCertifying, setIsCertifying] = useState(false);
+  const [scaffoldResult, setScaffoldResult] = useState<MappingScaffoldResponse | null>(null);
+  const [scaffoldMarkdown, setScaffoldMarkdown] = useState<string | null>(null);
+  const [isGeneratingScaffoldBundle, setIsGeneratingScaffoldBundle] = useState(false);
+  const [isGeneratingScaffoldMarkdown, setIsGeneratingScaffoldMarkdown] = useState(false);
 
   const { data: opsData, isLoading: opsLoading, error: opsError } = useQuery({
     queryKey: ["canonical-mapping-operations"],
@@ -381,6 +392,84 @@ export function CanonicalMappingPage() {
     void navigator.clipboard.writeText(promotionMarkdown);
   }, [promotionMarkdown]);
 
+  const handleRunCertification = useCallback(async () => {
+    if (!selectedOp) return;
+    setIsCertifying(true);
+    setApiError(null);
+    setCertificationResult(null);
+    try {
+      const result = await certifyCanonicalMapping({
+        operationCode: selectedOp.operationCode,
+        version: selectedOp.version,
+        sourceVendor,
+        targetVendor,
+        direction,
+      });
+      setCertificationResult(result);
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === "object" && "response" in err
+          ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data
+              ?.error?.message ?? "Certification request failed"
+          : String(err);
+      setApiError(msg);
+    } finally {
+      setIsCertifying(false);
+    }
+  }, [selectedOp, sourceVendor, targetVendor, direction]);
+
+  const handleGenerateScaffoldBundle = useCallback(async () => {
+    if (!selectedOp) return;
+    setIsGeneratingScaffoldBundle(true);
+    setApiError(null);
+    setScaffoldResult(null);
+    try {
+      const result = await generateCanonicalMappingScaffoldBundle({
+        operationCode: selectedOp.operationCode,
+        version: selectedOp.version,
+        sourceVendor,
+        targetVendor,
+        directions: ["CANONICAL_TO_VENDOR", "VENDOR_TO_CANONICAL"],
+      });
+      setScaffoldResult(result);
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === "object" && "response" in err
+          ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data
+              ?.error?.message ?? "Scaffold bundle request failed"
+          : String(err);
+      setApiError(msg);
+    } finally {
+      setIsGeneratingScaffoldBundle(false);
+    }
+  }, [selectedOp, sourceVendor, targetVendor]);
+
+  const handleGenerateScaffoldMarkdown = useCallback(async () => {
+    if (!selectedOp) return;
+    setIsGeneratingScaffoldMarkdown(true);
+    setApiError(null);
+    setScaffoldMarkdown(null);
+    try {
+      const result = await generateCanonicalMappingScaffoldMarkdown({
+        operationCode: selectedOp.operationCode,
+        version: selectedOp.version,
+        sourceVendor,
+        targetVendor,
+        directions: ["CANONICAL_TO_VENDOR", "VENDOR_TO_CANONICAL"],
+      });
+      setScaffoldMarkdown(result.markdown ?? "");
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === "object" && "response" in err
+          ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data
+              ?.error?.message ?? "Scaffold markdown request failed"
+          : String(err);
+      setApiError(msg);
+    } finally {
+      setIsGeneratingScaffoldMarkdown(false);
+    }
+  }, [selectedOp, sourceVendor, targetVendor]);
+
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold text-gray-900">Canonical Mappings</h1>
@@ -573,6 +662,30 @@ export function CanonicalMappingPage() {
                   className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 rounded-lg border border-slate-300"
                 >
                   {isGeneratingPromotionMarkdown ? "Generating…" : "Generate Promotion Markdown"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRunCertification}
+                  disabled={isCertifying}
+                  className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 rounded-lg border border-slate-300"
+                >
+                  {isCertifying ? "Running…" : "Run Certification"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleGenerateScaffoldBundle}
+                  disabled={isGeneratingScaffoldBundle || !selectedOp}
+                  className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 rounded-lg border border-slate-300"
+                >
+                  {isGeneratingScaffoldBundle ? "Generating…" : "Generate Scaffold Bundle"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleGenerateScaffoldMarkdown}
+                  disabled={isGeneratingScaffoldMarkdown || !selectedOp}
+                  className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 rounded-lg border border-slate-300"
+                >
+                  {isGeneratingScaffoldMarkdown ? "Generating…" : "Generate Scaffold Markdown"}
                 </button>
               </div>
 
@@ -922,6 +1035,128 @@ export function CanonicalMappingPage() {
                   <pre className="text-xs text-gray-700 bg-white rounded p-4 overflow-x-auto border border-gray-200 font-mono whitespace-pre-wrap">
                     {promotionMarkdown}
                   </pre>
+                </div>
+              )}
+
+              {scaffoldResult && scaffoldResult.scaffoldBundle && (
+                <div className="p-4 rounded-lg border border-gray-200 bg-gray-50 space-y-3">
+                  <h3 className="text-sm font-medium text-gray-900">
+                    Scaffold Bundle (Onboarding / Review-Only — No Automatic Apply)
+                  </h3>
+                  <p className="text-xs text-gray-600">
+                    Artifact for onboarding new vendor-pair mappings. Deterministic mappings remain authoritative.
+                  </p>
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-medium text-gray-700">File Paths</h4>
+                    <ul className="text-xs text-gray-600 space-y-1 font-mono">
+                      <li>Definition: {scaffoldResult.scaffoldBundle.mappingDefinitionFile}</li>
+                      <li>Fixture: {scaffoldResult.scaffoldBundle.fixtureFile}</li>
+                      <li>Test: {scaffoldResult.scaffoldBundle.testFile}</li>
+                    </ul>
+                  </div>
+                  {scaffoldResult.mappingDefinitionStub && (
+                    <div className="space-y-1">
+                      <h4 className="text-xs font-medium text-gray-700">Mapping Definition Stub</h4>
+                      <pre className="text-xs text-gray-700 bg-white rounded p-3 overflow-x-auto border border-slate-200 font-mono whitespace-pre-wrap">
+                        {scaffoldResult.mappingDefinitionStub}
+                      </pre>
+                    </div>
+                  )}
+                  {scaffoldResult.fixtureStub && (
+                    <div className="space-y-1">
+                      <h4 className="text-xs font-medium text-gray-700">Fixture Stub</h4>
+                      <pre className="text-xs text-gray-700 bg-white rounded p-3 overflow-x-auto border border-slate-200 font-mono whitespace-pre-wrap">
+                        {scaffoldResult.fixtureStub}
+                      </pre>
+                    </div>
+                  )}
+                  {scaffoldResult.testStub && (
+                    <div className="space-y-1">
+                      <h4 className="text-xs font-medium text-gray-700">Test Stub</h4>
+                      <pre className="text-xs text-gray-700 bg-white rounded p-3 overflow-x-auto border border-slate-200 font-mono whitespace-pre-wrap">
+                        {scaffoldResult.testStub}
+                      </pre>
+                    </div>
+                  )}
+                  {scaffoldResult.scaffoldBundle.reviewChecklist?.length ? (
+                    <div className="space-y-1">
+                      <h4 className="text-xs font-medium text-gray-700">Review Checklist</h4>
+                      <ul className="text-xs text-gray-600 list-disc list-inside">
+                        {scaffoldResult.scaffoldBundle.reviewChecklist.map((item, i) => (
+                          <li key={i}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {scaffoldResult.notes?.length ? (
+                    <ul className="text-xs text-gray-600 list-disc list-inside">
+                      {scaffoldResult.notes.map((n, i) => (
+                        <li key={i}>{n}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              )}
+
+              {scaffoldMarkdown && (
+                <div className="p-4 rounded-lg border border-gray-200 bg-gray-50 space-y-2">
+                  <h3 className="text-sm font-medium text-gray-900">
+                    Scaffold Markdown (Onboarding / Review-Only)
+                  </h3>
+                  <pre className="text-xs text-gray-700 bg-white rounded p-4 overflow-x-auto border border-gray-200 font-mono whitespace-pre-wrap">
+                    {scaffoldMarkdown}
+                  </pre>
+                </div>
+              )}
+
+              {certificationResult && (
+                <div className="p-4 rounded-lg border border-gray-200 bg-gray-50 space-y-3">
+                  <h3 className="text-sm font-medium text-gray-900">
+                    Certification (Fixture-Based Verification Only)
+                  </h3>
+                  <div
+                    className={`p-2 rounded ${
+                      certificationResult.summary.status === "PASS"
+                        ? "bg-green-50 border border-green-200"
+                        : certificationResult.summary.status === "WARN"
+                          ? "bg-amber-50 border border-amber-200"
+                          : "bg-red-50 border border-red-200"
+                    }`}
+                  >
+                    <span className="text-sm font-medium">
+                      {certificationResult.summary.status}: Passed {certificationResult.summary.passed}, Failed{" "}
+                      {certificationResult.summary.failed}
+                      {certificationResult.summary.warnings > 0
+                        ? `, Warnings ${certificationResult.summary.warnings}`
+                        : ""}
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-medium text-gray-700">Fixture Results</h4>
+                    <ul className="space-y-1">
+                      {certificationResult.results?.map((r, i) => (
+                        <li
+                          key={i}
+                          className={`text-xs flex items-center gap-2 ${
+                            r.status === "PASS" ? "text-green-700" : "text-red-700"
+                          }`}
+                        >
+                          <span className="font-mono">{r.fixtureId}</span>
+                          <span>{r.status}</span>
+                          {r.notes?.length ? (
+                            <span className="text-gray-600">— {r.notes.join(" ")}</span>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  {certificationResult.notes?.length ? (
+                    <ul className="text-xs text-gray-600 list-disc list-inside">
+                      {certificationResult.notes.map((n, i) => (
+                        <li key={i}>{n}</li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </div>
               )}
 

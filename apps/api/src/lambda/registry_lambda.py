@@ -2117,6 +2117,115 @@ def _handle_get_mappings_canonical_operations(_event: dict[str, Any]) -> dict[st
         return _error(500, "INTERNAL_ERROR", str(e))
 
 
+def _handle_get_mappings_canonical_readiness(event: dict[str, Any]) -> dict[str, Any]:
+    """GET /v1/mappings/canonical/readiness - list mapping readiness, optionally filtered."""
+    try:
+        from schema.mapping_readiness import list_mapping_readiness
+
+        qp = _parse_query_params(event)
+        filters: dict[str, Any] = {}
+        if qp.get("operationcode"):
+            filters["operationCode"] = qp["operationcode"]
+        if qp.get("sourcevendor"):
+            filters["sourceVendor"] = qp["sourcevendor"]
+        if qp.get("targetvendor"):
+            filters["targetVendor"] = qp["targetvendor"]
+        if qp.get("status"):
+            filters["status"] = qp["status"]
+        result = list_mapping_readiness(filters)
+        return _success(200, result)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_get_mappings_canonical_readiness_by_operation(
+    event: dict[str, Any], operation_code: str
+) -> dict[str, Any]:
+    """GET /v1/mappings/canonical/readiness/{operationCode} - readiness for operation across vendor pairs."""
+    if not operation_code or not str(operation_code).strip():
+        return _error(400, "VALIDATION_ERROR", "operationCode is required")
+    try:
+        from schema.mapping_readiness import list_mapping_readiness
+
+        filters: dict[str, Any] = {"operationCode": str(operation_code).strip().upper()}
+        result = list_mapping_readiness(filters)
+        return _success(200, result)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_get_mappings_canonical_fixtures(event: dict[str, Any]) -> dict[str, Any]:
+    """GET /v1/mappings/canonical/fixtures - list available fixture sets / operations / directions."""
+    try:
+        from schema.mapping_certification import list_mapping_fixtures_api
+
+        qp = _parse_query_params(event)
+        op_code = (qp.get("operationcode") or qp.get("operation_code") or "").strip() or None
+        version = (qp.get("version") or "").strip() or None
+        source = (qp.get("sourcevendor") or qp.get("source_vendor") or "").strip() or None
+        target = (qp.get("targetvendor") or qp.get("target_vendor") or "").strip() or None
+        fixture_set = (qp.get("fixtureset") or qp.get("fixture_set") or "default").strip()
+        result = list_mapping_fixtures_api(op_code, version, source, target, fixture_set)
+        return _success(200, result)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_post_mappings_canonical_certify(event: dict[str, Any]) -> dict[str, Any]:
+    """POST /v1/mappings/canonical/certify - run deterministic certification against fixtures."""
+    try:
+        from schema.mapping_certification import run_mapping_certification
+
+        try:
+            body = _parse_body_strict(event.get("body"))
+        except json.JSONDecodeError as e:
+            return _error(400, "INVALID_JSON", f"Malformed JSON body: {e}")
+        if not isinstance(body, dict):
+            return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+        result = run_mapping_certification(body)
+        return _success(200, result)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_post_mappings_canonical_scaffold_bundle(event: dict[str, Any]) -> dict[str, Any]:
+    """POST /v1/mappings/canonical/scaffold-bundle - generate scaffold bundle for onboarding."""
+    try:
+        from schema.mapping_scaffold_generator import build_mapping_scaffold_bundle
+
+        try:
+            body = _parse_body_strict(event.get("body"))
+        except json.JSONDecodeError as e:
+            return _error(400, "INVALID_JSON", f"Malformed JSON body: {e}")
+        if not isinstance(body, dict):
+            return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+        result = build_mapping_scaffold_bundle(body)
+        if not result.get("valid"):
+            return _error(400, "VALIDATION_ERROR", (result.get("notes") or ["Invalid scaffold request."])[0])
+        return _success(200, result)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_post_mappings_canonical_scaffold_bundle_markdown(event: dict[str, Any]) -> dict[str, Any]:
+    """POST /v1/mappings/canonical/scaffold-bundle/markdown - generate scaffold markdown."""
+    try:
+        from schema.mapping_scaffold_generator import build_mapping_scaffold_bundle
+
+        try:
+            body = _parse_body_strict(event.get("body"))
+        except json.JSONDecodeError as e:
+            return _error(400, "INVALID_JSON", f"Malformed JSON body: {e}")
+        if not isinstance(body, dict):
+            return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+        result = build_mapping_scaffold_bundle(body)
+        if not result.get("valid"):
+            return _error(400, "VALIDATION_ERROR", (result.get("notes") or ["Invalid scaffold request."])[0])
+        return _success(200, {"markdown": result.get("markdown") or "", "notes": result.get("notes") or []})
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
 def _handle_post_mappings_canonical_preview(event: dict[str, Any]) -> dict[str, Any]:
     """POST /v1/mappings/canonical/preview - preview transform without execution."""
     try:
@@ -2278,6 +2387,29 @@ def _handle_post_mappings_canonical_proposal_package_markdown(event: dict[str, A
         package_obj = result.get("proposalPackage")
         markdown = build_mapping_proposal_markdown(package_obj) if package_obj else ""
         return _success(200, {"markdown": markdown, "proposalId": package_obj.get("proposalId") if package_obj else None})
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_post_mappings_canonical_certify(event: dict[str, Any]) -> dict[str, Any]:
+    """POST /v1/mappings/canonical/certify - run deterministic certification against fixtures."""
+    try:
+        from schema.mapping_certification import run_mapping_certification
+
+        try:
+            body = _parse_body_strict(event.get("body"))
+        except json.JSONDecodeError as e:
+            return _error(400, "INVALID_JSON", f"Malformed JSON body: {e}")
+        if not isinstance(body, dict):
+            return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+
+        result = run_mapping_certification(body)
+        if not result.get("valid") and result.get("summary", {}).get("status") == "FAIL":
+            notes = result.get("notes", [])
+            first_note = notes[0] if notes else "Certification failed"
+            if "No fixtures found" in first_note or "required" in first_note.lower() or "not found" in first_note.lower():
+                return _error(400, "VALIDATION_ERROR", first_note)
+        return _success(200, result)
     except Exception as e:
         return _error(500, "INTERNAL_ERROR", str(e))
 
@@ -4825,6 +4957,55 @@ def _handler_impl(event: dict[str, Any], context: object) -> dict[str, Any]:
         and event.get("httpMethod") == "GET"
     ):
         return _handle_get_mappings_canonical_operations(event)
+
+    # GET /v1/mappings/canonical/fixtures - list available fixtures
+    if (
+        len(segments) == 4
+        and segments[:4] == ["v1", "mappings", "canonical", "fixtures"]
+        and event.get("httpMethod") == "GET"
+    ):
+        return _handle_get_mappings_canonical_fixtures(event)
+
+    # GET /v1/mappings/canonical/readiness/{operationCode} - readiness for operation
+    if (
+        len(segments) == 5
+        and segments[:4] == ["v1", "mappings", "canonical", "readiness"]
+        and event.get("httpMethod") == "GET"
+    ):
+        operation_code = segments[4] or (event.get("pathParameters") or {}).get("operationCode")
+        return _handle_get_mappings_canonical_readiness_by_operation(event, operation_code or "")
+
+    # GET /v1/mappings/canonical/readiness - list readiness with filters
+    if (
+        len(segments) == 4
+        and segments[:4] == ["v1", "mappings", "canonical", "readiness"]
+        and event.get("httpMethod") == "GET"
+    ):
+        return _handle_get_mappings_canonical_readiness(event)
+
+    # POST /v1/mappings/canonical/certify - run certification
+    if (
+        len(segments) == 4
+        and segments[:4] == ["v1", "mappings", "canonical", "certify"]
+        and event.get("httpMethod") == "POST"
+    ):
+        return _handle_post_mappings_canonical_certify(event)
+
+    # POST /v1/mappings/canonical/scaffold-bundle/markdown - generate scaffold markdown
+    if (
+        len(segments) == 5
+        and segments[:5] == ["v1", "mappings", "canonical", "scaffold-bundle", "markdown"]
+        and event.get("httpMethod") == "POST"
+    ):
+        return _handle_post_mappings_canonical_scaffold_bundle_markdown(event)
+
+    # POST /v1/mappings/canonical/scaffold-bundle - generate scaffold bundle
+    if (
+        len(segments) == 4
+        and segments[:4] == ["v1", "mappings", "canonical", "scaffold-bundle"]
+        and event.get("httpMethod") == "POST"
+    ):
+        return _handle_post_mappings_canonical_scaffold_bundle(event)
 
     # POST /v1/mappings/canonical/preview - preview transform
     if (

@@ -14,6 +14,7 @@ const primaryNavItems = [
   { path: "/admin/runtime-preflight", label: "Runtime Preflight", featureCode: "registry_basic" },
   { path: "/admin/canonical-execute", label: "Canonical Execute", featureCode: "registry_basic" },
   { path: "/admin/canonical-mappings", label: "Canonical Mappings", featureCode: "registry_basic" },
+  { path: "/admin/canonical-mapping-readiness", label: "Mapping Readiness", featureCode: "registry_basic" },
   { path: "/ai", label: "AI", featureCode: "ai_formatter_ui" },
 ] as const;
 
@@ -37,6 +38,7 @@ function isPrimaryNavActive(pathname: string, label: string): boolean {
   if (label === "Runtime Preflight") return pathname.startsWith("/admin/runtime-preflight");
   if (label === "Canonical Execute") return pathname.startsWith("/admin/canonical-execute");
   if (label === "Canonical Mappings") return pathname.startsWith("/admin/canonical-mappings");
+  if (label === "Mapping Readiness") return pathname.startsWith("/admin/canonical-mapping-readiness");
   if (label === "AI") return pathname.startsWith("/ai");
   return false;
 }
@@ -105,6 +107,7 @@ export function TopBar({ onSettingsClick, onFeaturesClick }: TopBarProps) {
     if (item.path === "/admin/runtime-preflight") return featureRegistryBasic;
     if (item.path === "/admin/canonical-execute") return featureRegistryBasic;
     if (item.path === "/admin/canonical-mappings") return featureRegistryBasic;
+    if (item.path === "/admin/canonical-mapping-readiness") return featureRegistryBasic;
     if (item.path === "/ai") return featureAiFormatter;
     return true;
   });

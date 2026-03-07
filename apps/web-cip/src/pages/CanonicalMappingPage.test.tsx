@@ -342,4 +342,144 @@ describe("CanonicalMappingPage smoke", () => {
     expect(screen.getByText(/Promotion Markdown \(Review-Only \/ Manual Apply\)/)).toBeInTheDocument();
     expect(screen.getByText(/# Mapping Promotion Artifact/)).toBeInTheDocument();
   });
+
+  it("Generate Scaffold Bundle button renders and scaffold section shows result", async () => {
+    vi.mocked(endpointsApi.generateCanonicalMappingScaffoldBundle).mockResolvedValue({
+      valid: true,
+      scaffoldBundle: {
+        operationCode: "GET_VERIFY_MEMBER_ELIGIBILITY",
+        version: "1.0",
+        sourceVendor: "LH001",
+        targetVendor: "LH002",
+        mappingDefinitionFile: "apps/api/src/schema/canonical_mappings/eligibility_v1_lh001_lh002.py",
+        fixtureFile: "apps/api/src/schema/mapping_fixtures/eligibility_v1_lh001_lh002.py",
+        testFile: "tests/schema/test_mapping_certification_eligibility_v1_lh001_lh002.py",
+        directions: ["CANONICAL_TO_VENDOR", "VENDOR_TO_CANONICAL"],
+        reviewChecklist: ["Confirm vendor pair naming is correct."],
+        notes: ["Scaffold only. No mapping was created or applied."],
+      },
+      mappingDefinitionStub: "# Mapping definition stub",
+      fixtureStub: "# Fixture stub",
+      testStub: "# Test stub",
+      markdown: "# Scaffold Onboarding",
+      notes: ["Scaffold only. No mapping was created or applied."],
+    });
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText("Verify Member Eligibility")).toBeInTheDocument();
+    });
+    await userEvent.setup().click(screen.getByText("Verify Member Eligibility"));
+    expect(screen.getByRole("button", { name: "Generate Scaffold Bundle" })).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Generate Scaffold Bundle" }));
+    await waitFor(() => {
+      expect(endpointsApi.generateCanonicalMappingScaffoldBundle).toHaveBeenCalled();
+    });
+    expect(screen.getByText(/Scaffold Bundle \(Onboarding \/ Review-Only/)).toBeInTheDocument();
+    expect(screen.getAllByText(/eligibility_v1_lh001_lh002\.py/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/Scaffold only. No mapping was created or applied/)).toBeInTheDocument();
+  });
+
+  it("Generate Scaffold Markdown button renders and markdown section shows result", async () => {
+    vi.mocked(endpointsApi.generateCanonicalMappingScaffoldMarkdown).mockResolvedValue({
+      markdown: "# Mapping Scaffold Onboarding\n\n**Operation:** GET_VERIFY_MEMBER_ELIGIBILITY",
+      notes: ["Onboarding/review-only artifact."],
+    });
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText("Verify Member Eligibility")).toBeInTheDocument();
+    });
+    await userEvent.setup().click(screen.getByText("Verify Member Eligibility"));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Generate Scaffold Markdown" }));
+    await waitFor(() => {
+      expect(endpointsApi.generateCanonicalMappingScaffoldMarkdown).toHaveBeenCalled();
+    });
+    expect(screen.getByText(/Scaffold Markdown \(Onboarding \/ Review-Only\)/)).toBeInTheDocument();
+    expect(screen.getByText(/# Mapping Scaffold Onboarding/)).toBeInTheDocument();
+  });
+
+  it("Generate Scaffold Bundle button renders and scaffold section shows result", async () => {
+    vi.mocked(endpointsApi.generateCanonicalMappingScaffoldBundle).mockResolvedValue({
+      valid: true,
+      scaffoldBundle: {
+        operationCode: "GET_VERIFY_MEMBER_ELIGIBILITY",
+        version: "1.0",
+        sourceVendor: "LH001",
+        targetVendor: "LH002",
+        mappingDefinitionFile: "apps/api/src/schema/canonical_mappings/eligibility_v1_lh001_lh002.py",
+        fixtureFile: "apps/api/src/schema/mapping_fixtures/eligibility_v1_lh001_lh002.py",
+        testFile: "tests/schema/test_mapping_certification_eligibility_v1_lh001_lh002.py",
+        directions: ["CANONICAL_TO_VENDOR", "VENDOR_TO_CANONICAL"],
+        reviewChecklist: ["Confirm vendor pair naming is correct."],
+        notes: ["Scaffold only. No mapping was created or applied."],
+      },
+      mappingDefinitionStub: "# Mapping definition stub",
+      fixtureStub: "# Fixture stub",
+      testStub: "# Test stub",
+      markdown: "# Scaffold Onboarding",
+      notes: ["Scaffold only. No mapping was created or applied."],
+    });
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText("Verify Member Eligibility")).toBeInTheDocument();
+    });
+    await userEvent.setup().click(screen.getByText("Verify Member Eligibility"));
+    expect(screen.getByRole("button", { name: "Generate Scaffold Bundle" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Generate Scaffold Markdown" })).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Generate Scaffold Bundle" }));
+    await waitFor(() => {
+      expect(endpointsApi.generateCanonicalMappingScaffoldBundle).toHaveBeenCalled();
+    });
+    expect(screen.getByText(/Scaffold Bundle \(Onboarding \/ Review-Only/)).toBeInTheDocument();
+    expect(screen.getAllByText(/eligibility_v1_lh001_lh002\.py/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/Scaffold only\. No mapping was created or applied/)).toBeInTheDocument();
+  });
+
+  it("scaffold markdown section renders after Generate Scaffold Markdown", async () => {
+    vi.mocked(endpointsApi.generateCanonicalMappingScaffoldMarkdown).mockResolvedValue({
+      markdown: "# Mapping Scaffold Onboarding\n\n**Operation:** GET_VERIFY_MEMBER_ELIGIBILITY",
+      notes: ["Scaffold only. No mapping was created or applied."],
+    });
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText("Verify Member Eligibility")).toBeInTheDocument();
+    });
+    await userEvent.setup().click(screen.getByText("Verify Member Eligibility"));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Generate Scaffold Markdown" }));
+    await waitFor(() => {
+      expect(endpointsApi.generateCanonicalMappingScaffoldMarkdown).toHaveBeenCalled();
+    });
+    expect(screen.getByText(/Scaffold Markdown \(Onboarding \/ Review-Only\)/)).toBeInTheDocument();
+    expect(screen.getByText(/# Mapping Scaffold Onboarding/)).toBeInTheDocument();
+  });
+
+  it("Run Certification button renders and certification section shows result", async () => {
+    vi.mocked(endpointsApi.certifyCanonicalMapping).mockResolvedValue({
+      valid: true,
+      operationCode: "GET_VERIFY_MEMBER_ELIGIBILITY",
+      version: "1.0",
+      sourceVendor: "LH001",
+      targetVendor: "LH002",
+      direction: "CANONICAL_TO_VENDOR",
+      fixtureSet: "default",
+      summary: { passed: 2, failed: 0, warnings: 0, status: "PASS" },
+      results: [
+        { fixtureId: "eligibility-c2v-basic", status: "PASS", inputPayload: {}, expectedOutput: {}, actualOutput: {}, notes: [] },
+        { fixtureId: "eligibility-c2v-shape-variation", status: "PASS", inputPayload: {}, expectedOutput: {}, actualOutput: {}, notes: [] },
+      ],
+      notes: ["Certification is deterministic and fixture-based.", "No runtime execution performed."],
+    });
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText("Verify Member Eligibility")).toBeInTheDocument();
+    });
+    await userEvent.setup().click(screen.getByText("Verify Member Eligibility"));
+    expect(screen.getByRole("button", { name: "Run Certification" })).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Run Certification" }));
+    await waitFor(() => {
+      expect(endpointsApi.certifyCanonicalMapping).toHaveBeenCalled();
+    });
+    expect(screen.getByText(/Certification \(Fixture-Based Verification Only\)/)).toBeInTheDocument();
+    expect(screen.getByText(/PASS: Passed 2, Failed 0/)).toBeInTheDocument();
+    expect(screen.getByText(/eligibility-c2v-basic/)).toBeInTheDocument();
+  });
 });

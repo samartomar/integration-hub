@@ -89,6 +89,189 @@ def _mappings_proposal_package_markdown_event(body: dict) -> dict:
     }
 
 
+def _mappings_scaffold_bundle_event(body: dict) -> dict:
+    """Build POST /v1/mappings/canonical/scaffold-bundle event."""
+    return {
+        "path": "/v1/mappings/canonical/scaffold-bundle",
+        "rawPath": "/v1/mappings/canonical/scaffold-bundle",
+        "httpMethod": "POST",
+        "headers": {"content-type": "application/json"},
+        "body": json.dumps(body),
+        "queryStringParameters": {},
+        "pathParameters": {},
+        "requestContext": AUTH_REQUEST_CONTEXT,
+    }
+
+
+def _mappings_scaffold_bundle_markdown_event(body: dict) -> dict:
+    """Build POST /v1/mappings/canonical/scaffold-bundle/markdown event."""
+    return {
+        "path": "/v1/mappings/canonical/scaffold-bundle/markdown",
+        "rawPath": "/v1/mappings/canonical/scaffold-bundle/markdown",
+        "httpMethod": "POST",
+        "headers": {"content-type": "application/json"},
+        "body": json.dumps(body),
+        "queryStringParameters": {},
+        "pathParameters": {},
+        "requestContext": AUTH_REQUEST_CONTEXT,
+    }
+
+
+def _mappings_readiness_event(query_params: dict | None = None) -> dict:
+    """Build GET /v1/mappings/canonical/readiness event."""
+    return {
+        "path": "/v1/mappings/canonical/readiness",
+        "rawPath": "/v1/mappings/canonical/readiness",
+        "httpMethod": "GET",
+        "headers": {},
+        "queryStringParameters": query_params or {},
+        "pathParameters": {},
+        "requestContext": AUTH_REQUEST_CONTEXT,
+    }
+
+
+def _mappings_readiness_by_operation_event(operation_code: str) -> dict:
+    """Build GET /v1/mappings/canonical/readiness/{operationCode} event."""
+    return {
+        "path": f"/v1/mappings/canonical/readiness/{operation_code}",
+        "rawPath": f"/v1/mappings/canonical/readiness/{operation_code}",
+        "httpMethod": "GET",
+        "headers": {},
+        "queryStringParameters": {},
+        "pathParameters": {"operationCode": operation_code},
+        "requestContext": AUTH_REQUEST_CONTEXT,
+    }
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_scaffold_bundle_success(_mock_auth: object) -> None:
+    """POST /v1/mappings/canonical/scaffold-bundle returns scaffold bundle."""
+    body = {
+        "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+        "version": "1.0",
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "directions": ["CANONICAL_TO_VENDOR", "VENDOR_TO_CANONICAL"],
+    }
+    event = _mappings_scaffold_bundle_event(body)
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    resp = json.loads(result["body"])
+    assert resp.get("valid") is True
+    bundle = resp.get("scaffoldBundle")
+    assert bundle is not None
+    assert bundle["operationCode"] == "GET_VERIFY_MEMBER_ELIGIBILITY"
+    assert "mappingDefinitionFile" in bundle
+    assert "eligibility" in bundle["mappingDefinitionFile"]
+    assert resp.get("mappingDefinitionStub")
+    assert resp.get("fixtureStub")
+    assert resp.get("testStub")
+    assert "notes" in resp
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_scaffold_bundle_markdown_success(_mock_auth: object) -> None:
+    """POST /v1/mappings/canonical/scaffold-bundle/markdown returns markdown artifact."""
+    body = {
+        "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+        "version": "1.0",
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "directions": ["CANONICAL_TO_VENDOR", "VENDOR_TO_CANONICAL"],
+    }
+    event = _mappings_scaffold_bundle_markdown_event(body)
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    resp = json.loads(result["body"])
+    assert "markdown" in resp
+    assert "GET_VERIFY_MEMBER_ELIGIBILITY" in resp["markdown"]
+    assert "notes" in resp
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_scaffold_bundle_malformed_json_returns_400(_mock_auth: object) -> None:
+    """POST scaffold-bundle with malformed JSON returns 400."""
+    event = _mappings_scaffold_bundle_event({})
+    event["body"] = "not valid json {"
+    result = handler(event, None)
+    assert result["statusCode"] == 400
+    body = json.loads(result["body"])
+    assert "error" in body
+    assert body["error"]["code"] == "INVALID_JSON"
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_scaffold_bundle_invalid_input_returns_400(_mock_auth: object) -> None:
+    """POST scaffold-bundle with invalid operation returns 400."""
+    body = {
+        "operationCode": "UNSUPPORTED_OP",
+        "version": "1.0",
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+    }
+    event = _mappings_scaffold_bundle_event(body)
+    result = handler(event, None)
+    assert result["statusCode"] == 400
+    resp = json.loads(result["body"])
+    assert "error" in resp
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_readiness_success(_mock_auth: object) -> None:
+    """GET /v1/mappings/canonical/readiness returns readiness items."""
+    event = _mappings_readiness_event()
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert "items" in body
+    assert "summary" in body
+    assert body["summary"]["total"] >= 2
+    items = body["items"]
+    ops = {item["operationCode"] for item in items}
+    assert "GET_VERIFY_MEMBER_ELIGIBILITY" in ops
+    assert "GET_MEMBER_ACCUMULATORS" in ops
+    for item in items:
+        assert "status" in item
+        assert "mappingDefinition" in item
+        assert "fixtures" in item
+        assert "runtimeReady" in item
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_readiness_filter_by_operation(_mock_auth: object) -> None:
+    """GET /v1/mappings/canonical/readiness?operationCode= filters results."""
+    event = _mappings_readiness_event({"operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY"})
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    items = body["items"]
+    assert all(item["operationCode"] == "GET_VERIFY_MEMBER_ELIGIBILITY" for item in items)
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_readiness_by_operation_success(_mock_auth: object) -> None:
+    """GET /v1/mappings/canonical/readiness/{operationCode} returns readiness for that operation."""
+    event = _mappings_readiness_by_operation_event("GET_VERIFY_MEMBER_ELIGIBILITY")
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert "items" in body
+    assert all(
+        item["operationCode"] == "GET_VERIFY_MEMBER_ELIGIBILITY" for item in body["items"]
+    )
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_readiness_by_operation_unknown_returns_empty(_mock_auth: object) -> None:
+    """GET /v1/mappings/canonical/readiness/{operationCode} for unknown op returns empty items."""
+    event = _mappings_readiness_by_operation_event("UNKNOWN_OPERATION")
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert body["items"] == []
+    assert body["summary"]["total"] == 0
+
+
 @patch("registry_lambda.require_admin_secret", return_value=None)
 def test_mappings_operations_list_success(_mock_auth: object) -> None:
     """GET /v1/mappings/canonical/operations returns operations with mapping definitions."""
@@ -541,6 +724,178 @@ def test_mappings_promotion_artifact_invalid_proposal_returns_400(_mock_auth: ob
     assert "error" in resp
 
 
+# --- Certification endpoints ---
+
+
+def _mappings_fixtures_event() -> dict:
+    """Build GET /v1/mappings/canonical/fixtures event."""
+    return {
+        "path": "/v1/mappings/canonical/fixtures",
+        "rawPath": "/v1/mappings/canonical/fixtures",
+        "httpMethod": "GET",
+        "headers": {},
+        "queryStringParameters": {},
+        "pathParameters": {},
+        "requestContext": AUTH_REQUEST_CONTEXT,
+    }
+
+
+def _mappings_certify_event(body: dict) -> dict:
+    """Build POST /v1/mappings/canonical/certify event."""
+    return {
+        "path": "/v1/mappings/canonical/certify",
+        "rawPath": "/v1/mappings/canonical/certify",
+        "httpMethod": "POST",
+        "headers": {"content-type": "application/json"},
+        "body": json.dumps(body),
+        "queryStringParameters": {},
+        "pathParameters": {},
+        "requestContext": AUTH_REQUEST_CONTEXT,
+    }
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_fixtures_success(_mock_auth: object) -> None:
+    """GET /v1/mappings/canonical/fixtures returns fixture list."""
+    event = _mappings_fixtures_event()
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    resp = json.loads(result["body"])
+    assert "fixtureSet" in resp
+    assert "items" in resp
+    assert "notes" in resp
+    assert len(resp["items"]) >= 2
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_certify_success(_mock_auth: object) -> None:
+    """POST /v1/mappings/canonical/certify returns certification result."""
+    body = {
+        "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+        "version": "1.0",
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "direction": "CANONICAL_TO_VENDOR",
+    }
+    event = _mappings_certify_event(body)
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    resp = json.loads(result["body"])
+    assert resp["valid"] is True
+    assert resp["summary"]["status"] == "PASS"
+    assert resp["summary"]["passed"] >= 1
+    assert "results" in resp
+    assert "notes" in resp
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_certify_malformed_json_returns_400(_mock_auth: object) -> None:
+    """POST certify with malformed JSON returns 400."""
+    event = _mappings_certify_event({})
+    event["body"] = "not valid json {"
+    result = handler(event, None)
+    assert result["statusCode"] == 400
+    body = json.loads(result["body"])
+    assert body.get("error", {}).get("code") == "INVALID_JSON"
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_certify_invalid_input_returns_400(_mock_auth: object) -> None:
+    """POST certify with missing required fields returns 400."""
+    body = {"operationCode": "OP", "sourceVendor": "", "targetVendor": "T", "direction": "CANONICAL_TO_VENDOR"}
+    event = _mappings_certify_event(body)
+    result = handler(event, None)
+    assert result["statusCode"] == 400
+    resp = json.loads(result["body"])
+    assert "error" in resp
+
+
+# --- Certification endpoints ---
+
+
+def _mappings_fixtures_event() -> dict:
+    """Build GET /v1/mappings/canonical/fixtures event."""
+    return {
+        "path": "/v1/mappings/canonical/fixtures",
+        "rawPath": "/v1/mappings/canonical/fixtures",
+        "httpMethod": "GET",
+        "headers": {},
+        "queryStringParameters": {},
+        "pathParameters": {},
+        "requestContext": AUTH_REQUEST_CONTEXT,
+    }
+
+
+def _mappings_certify_event(body: dict) -> dict:
+    """Build POST /v1/mappings/canonical/certify event."""
+    return {
+        "path": "/v1/mappings/canonical/certify",
+        "rawPath": "/v1/mappings/canonical/certify",
+        "httpMethod": "POST",
+        "headers": {"content-type": "application/json"},
+        "body": json.dumps(body),
+        "queryStringParameters": {},
+        "pathParameters": {},
+        "requestContext": AUTH_REQUEST_CONTEXT,
+    }
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_fixtures_success(_mock_auth: object) -> None:
+    """GET /v1/mappings/canonical/fixtures returns fixture list."""
+    event = _mappings_fixtures_event()
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    resp = json.loads(result["body"])
+    assert "fixtureSet" in resp
+    assert "items" in resp
+    assert "notes" in resp
+    assert len(resp["items"]) >= 2
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_certify_success(_mock_auth: object) -> None:
+    """POST /v1/mappings/canonical/certify returns certification result."""
+    body = {
+        "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+        "version": "1.0",
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "direction": "CANONICAL_TO_VENDOR",
+    }
+    event = _mappings_certify_event(body)
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    resp = json.loads(result["body"])
+    assert resp["valid"] is True
+    assert resp["summary"]["status"] == "PASS"
+    assert resp["summary"]["passed"] >= 1
+    assert "results" in resp
+    assert "No runtime execution" in " ".join(resp.get("notes", []))
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_certify_malformed_json_returns_400(_mock_auth: object) -> None:
+    """POST certify with malformed JSON returns 400."""
+    event = _mappings_certify_event({})
+    event["body"] = "not valid json {"
+    result = handler(event, None)
+    assert result["statusCode"] == 400
+    body = json.loads(result["body"])
+    assert body.get("error", {}).get("code") == "INVALID_JSON"
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_certify_invalid_input_returns_400(_mock_auth: object) -> None:
+    """POST certify with missing required fields returns 400."""
+    body = {"operationCode": "OP", "sourceVendor": "", "targetVendor": "T", "direction": "CANONICAL_TO_VENDOR"}
+    event = _mappings_certify_event(body)
+    result = handler(event, None)
+    assert result["statusCode"] == 400
+    resp = json.loads(result["body"])
+    assert "error" in resp
+
+
 # --- Promotion Artifact endpoints ---
 
 
@@ -632,6 +987,178 @@ def test_mappings_promotion_artifact_invalid_proposal_returns_400(_mock_auth: ob
     """POST promotion-artifact with invalid proposal returns 400."""
     body = {"proposalPackage": {"operationCode": "OP", "sourceVendor": "", "targetVendor": "T"}}
     event = _mappings_promotion_artifact_event(body)
+    result = handler(event, None)
+    assert result["statusCode"] == 400
+    resp = json.loads(result["body"])
+    assert "error" in resp
+
+
+# --- Certification endpoints ---
+
+
+def _mappings_fixtures_event() -> dict:
+    """Build GET /v1/mappings/canonical/fixtures event."""
+    return {
+        "path": "/v1/mappings/canonical/fixtures",
+        "rawPath": "/v1/mappings/canonical/fixtures",
+        "httpMethod": "GET",
+        "headers": {},
+        "queryStringParameters": {},
+        "pathParameters": {},
+        "requestContext": AUTH_REQUEST_CONTEXT,
+    }
+
+
+def _mappings_certify_event(body: dict) -> dict:
+    """Build POST /v1/mappings/canonical/certify event."""
+    return {
+        "path": "/v1/mappings/canonical/certify",
+        "rawPath": "/v1/mappings/canonical/certify",
+        "httpMethod": "POST",
+        "headers": {"content-type": "application/json"},
+        "body": json.dumps(body),
+        "queryStringParameters": {},
+        "pathParameters": {},
+        "requestContext": AUTH_REQUEST_CONTEXT,
+    }
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_fixtures_success(_mock_auth: object) -> None:
+    """GET /v1/mappings/canonical/fixtures returns fixture list."""
+    event = _mappings_fixtures_event()
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    resp = json.loads(result["body"])
+    assert "fixtureSet" in resp
+    assert "items" in resp
+    assert "notes" in resp
+    assert len(resp["items"]) >= 2
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_certify_success(_mock_auth: object) -> None:
+    """POST /v1/mappings/canonical/certify returns certification result."""
+    body = {
+        "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+        "version": "1.0",
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "direction": "CANONICAL_TO_VENDOR",
+    }
+    event = _mappings_certify_event(body)
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    resp = json.loads(result["body"])
+    assert resp["valid"] is True
+    assert resp["summary"]["status"] == "PASS"
+    assert resp["summary"]["passed"] >= 1
+    assert "results" in resp
+    assert "notes" in resp
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_certify_malformed_json_returns_400(_mock_auth: object) -> None:
+    """POST certify with malformed JSON returns 400."""
+    event = _mappings_certify_event({})
+    event["body"] = "not valid json {"
+    result = handler(event, None)
+    assert result["statusCode"] == 400
+    body = json.loads(result["body"])
+    assert body.get("error", {}).get("code") == "INVALID_JSON"
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_certify_invalid_input_returns_400(_mock_auth: object) -> None:
+    """POST certify with missing required fields returns 400."""
+    body = {"operationCode": "OP", "sourceVendor": "", "targetVendor": "T", "direction": "CANONICAL_TO_VENDOR"}
+    event = _mappings_certify_event(body)
+    result = handler(event, None)
+    assert result["statusCode"] == 400
+    resp = json.loads(result["body"])
+    assert "error" in resp
+
+
+# --- Certification endpoints ---
+
+
+def _mappings_fixtures_event() -> dict:
+    """Build GET /v1/mappings/canonical/fixtures event."""
+    return {
+        "path": "/v1/mappings/canonical/fixtures",
+        "rawPath": "/v1/mappings/canonical/fixtures",
+        "httpMethod": "GET",
+        "headers": {},
+        "queryStringParameters": {},
+        "pathParameters": {},
+        "requestContext": AUTH_REQUEST_CONTEXT,
+    }
+
+
+def _mappings_certify_event(body: dict) -> dict:
+    """Build POST /v1/mappings/canonical/certify event."""
+    return {
+        "path": "/v1/mappings/canonical/certify",
+        "rawPath": "/v1/mappings/canonical/certify",
+        "httpMethod": "POST",
+        "headers": {"content-type": "application/json"},
+        "body": json.dumps(body),
+        "queryStringParameters": {},
+        "pathParameters": {},
+        "requestContext": AUTH_REQUEST_CONTEXT,
+    }
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_fixtures_success(_mock_auth: object) -> None:
+    """GET /v1/mappings/canonical/fixtures returns fixture list."""
+    event = _mappings_fixtures_event()
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    resp = json.loads(result["body"])
+    assert "fixtureSet" in resp
+    assert "items" in resp
+    assert "notes" in resp
+    assert len(resp["items"]) >= 2
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_certify_success(_mock_auth: object) -> None:
+    """POST /v1/mappings/canonical/certify returns certification result."""
+    body = {
+        "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+        "version": "1.0",
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "direction": "CANONICAL_TO_VENDOR",
+    }
+    event = _mappings_certify_event(body)
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    resp = json.loads(result["body"])
+    assert resp["valid"] is True
+    assert resp["summary"]["status"] == "PASS"
+    assert resp["summary"]["passed"] >= 1
+    assert "results" in resp
+    assert "No runtime execution" in " ".join(resp.get("notes", []))
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_certify_malformed_json_returns_400(_mock_auth: object) -> None:
+    """POST certify with malformed JSON returns 400."""
+    event = _mappings_certify_event({})
+    event["body"] = "not valid json {"
+    result = handler(event, None)
+    assert result["statusCode"] == 400
+    body = json.loads(result["body"])
+    assert body.get("error", {}).get("code") == "INVALID_JSON"
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_certify_invalid_input_returns_400(_mock_auth: object) -> None:
+    """POST certify with missing required fields returns 400."""
+    body = {"operationCode": "OP", "sourceVendor": "", "targetVendor": "T", "direction": "CANONICAL_TO_VENDOR"}
+    event = _mappings_certify_event(body)
     result = handler(event, None)
     assert result["statusCode"] == 400
     resp = json.loads(result["body"])
@@ -1034,6 +1561,178 @@ def test_mappings_promotion_artifact_invalid_proposal_returns_400(_mock_auth: ob
     assert "error" in resp
 
 
+# --- Certification endpoints ---
+
+
+def _mappings_fixtures_event() -> dict:
+    """Build GET /v1/mappings/canonical/fixtures event."""
+    return {
+        "path": "/v1/mappings/canonical/fixtures",
+        "rawPath": "/v1/mappings/canonical/fixtures",
+        "httpMethod": "GET",
+        "headers": {},
+        "queryStringParameters": {},
+        "pathParameters": {},
+        "requestContext": AUTH_REQUEST_CONTEXT,
+    }
+
+
+def _mappings_certify_event(body: dict) -> dict:
+    """Build POST /v1/mappings/canonical/certify event."""
+    return {
+        "path": "/v1/mappings/canonical/certify",
+        "rawPath": "/v1/mappings/canonical/certify",
+        "httpMethod": "POST",
+        "headers": {"content-type": "application/json"},
+        "body": json.dumps(body),
+        "queryStringParameters": {},
+        "pathParameters": {},
+        "requestContext": AUTH_REQUEST_CONTEXT,
+    }
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_fixtures_success(_mock_auth: object) -> None:
+    """GET /v1/mappings/canonical/fixtures returns fixture list."""
+    event = _mappings_fixtures_event()
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    resp = json.loads(result["body"])
+    assert "fixtureSet" in resp
+    assert "items" in resp
+    assert "notes" in resp
+    assert len(resp["items"]) >= 2
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_certify_success(_mock_auth: object) -> None:
+    """POST /v1/mappings/canonical/certify returns certification result."""
+    body = {
+        "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+        "version": "1.0",
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "direction": "CANONICAL_TO_VENDOR",
+    }
+    event = _mappings_certify_event(body)
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    resp = json.loads(result["body"])
+    assert resp["valid"] is True
+    assert resp["summary"]["status"] == "PASS"
+    assert resp["summary"]["passed"] >= 1
+    assert "results" in resp
+    assert "notes" in resp
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_certify_malformed_json_returns_400(_mock_auth: object) -> None:
+    """POST certify with malformed JSON returns 400."""
+    event = _mappings_certify_event({})
+    event["body"] = "not valid json {"
+    result = handler(event, None)
+    assert result["statusCode"] == 400
+    body = json.loads(result["body"])
+    assert body.get("error", {}).get("code") == "INVALID_JSON"
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_certify_invalid_input_returns_400(_mock_auth: object) -> None:
+    """POST certify with missing required fields returns 400."""
+    body = {"operationCode": "OP", "sourceVendor": "", "targetVendor": "T", "direction": "CANONICAL_TO_VENDOR"}
+    event = _mappings_certify_event(body)
+    result = handler(event, None)
+    assert result["statusCode"] == 400
+    resp = json.loads(result["body"])
+    assert "error" in resp
+
+
+# --- Certification endpoints ---
+
+
+def _mappings_fixtures_event() -> dict:
+    """Build GET /v1/mappings/canonical/fixtures event."""
+    return {
+        "path": "/v1/mappings/canonical/fixtures",
+        "rawPath": "/v1/mappings/canonical/fixtures",
+        "httpMethod": "GET",
+        "headers": {},
+        "queryStringParameters": {},
+        "pathParameters": {},
+        "requestContext": AUTH_REQUEST_CONTEXT,
+    }
+
+
+def _mappings_certify_event(body: dict) -> dict:
+    """Build POST /v1/mappings/canonical/certify event."""
+    return {
+        "path": "/v1/mappings/canonical/certify",
+        "rawPath": "/v1/mappings/canonical/certify",
+        "httpMethod": "POST",
+        "headers": {"content-type": "application/json"},
+        "body": json.dumps(body),
+        "queryStringParameters": {},
+        "pathParameters": {},
+        "requestContext": AUTH_REQUEST_CONTEXT,
+    }
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_fixtures_success(_mock_auth: object) -> None:
+    """GET /v1/mappings/canonical/fixtures returns fixture list."""
+    event = _mappings_fixtures_event()
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    resp = json.loads(result["body"])
+    assert "fixtureSet" in resp
+    assert "items" in resp
+    assert "notes" in resp
+    assert len(resp["items"]) >= 2
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_certify_success(_mock_auth: object) -> None:
+    """POST /v1/mappings/canonical/certify returns certification result."""
+    body = {
+        "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+        "version": "1.0",
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "direction": "CANONICAL_TO_VENDOR",
+    }
+    event = _mappings_certify_event(body)
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    resp = json.loads(result["body"])
+    assert resp["valid"] is True
+    assert resp["summary"]["status"] == "PASS"
+    assert resp["summary"]["passed"] >= 1
+    assert "results" in resp
+    assert "No runtime execution" in " ".join(resp.get("notes", []))
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_certify_malformed_json_returns_400(_mock_auth: object) -> None:
+    """POST certify with malformed JSON returns 400."""
+    event = _mappings_certify_event({})
+    event["body"] = "not valid json {"
+    result = handler(event, None)
+    assert result["statusCode"] == 400
+    body = json.loads(result["body"])
+    assert body.get("error", {}).get("code") == "INVALID_JSON"
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_certify_invalid_input_returns_400(_mock_auth: object) -> None:
+    """POST certify with missing required fields returns 400."""
+    body = {"operationCode": "OP", "sourceVendor": "", "targetVendor": "T", "direction": "CANONICAL_TO_VENDOR"}
+    event = _mappings_certify_event(body)
+    result = handler(event, None)
+    assert result["statusCode"] == 400
+    resp = json.loads(result["body"])
+    assert "error" in resp
+
+
 # --- Promotion Artifact endpoints ---
 
 
@@ -1125,6 +1824,178 @@ def test_mappings_promotion_artifact_invalid_proposal_returns_400(_mock_auth: ob
     """POST promotion-artifact with invalid proposal returns 400."""
     body = {"proposalPackage": {"operationCode": "OP", "sourceVendor": "", "targetVendor": "T"}}
     event = _mappings_promotion_artifact_event(body)
+    result = handler(event, None)
+    assert result["statusCode"] == 400
+    resp = json.loads(result["body"])
+    assert "error" in resp
+
+
+# --- Certification endpoints ---
+
+
+def _mappings_fixtures_event() -> dict:
+    """Build GET /v1/mappings/canonical/fixtures event."""
+    return {
+        "path": "/v1/mappings/canonical/fixtures",
+        "rawPath": "/v1/mappings/canonical/fixtures",
+        "httpMethod": "GET",
+        "headers": {},
+        "queryStringParameters": {},
+        "pathParameters": {},
+        "requestContext": AUTH_REQUEST_CONTEXT,
+    }
+
+
+def _mappings_certify_event(body: dict) -> dict:
+    """Build POST /v1/mappings/canonical/certify event."""
+    return {
+        "path": "/v1/mappings/canonical/certify",
+        "rawPath": "/v1/mappings/canonical/certify",
+        "httpMethod": "POST",
+        "headers": {"content-type": "application/json"},
+        "body": json.dumps(body),
+        "queryStringParameters": {},
+        "pathParameters": {},
+        "requestContext": AUTH_REQUEST_CONTEXT,
+    }
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_fixtures_success(_mock_auth: object) -> None:
+    """GET /v1/mappings/canonical/fixtures returns fixture list."""
+    event = _mappings_fixtures_event()
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    resp = json.loads(result["body"])
+    assert "fixtureSet" in resp
+    assert "items" in resp
+    assert "notes" in resp
+    assert len(resp["items"]) >= 2
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_certify_success(_mock_auth: object) -> None:
+    """POST /v1/mappings/canonical/certify returns certification result."""
+    body = {
+        "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+        "version": "1.0",
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "direction": "CANONICAL_TO_VENDOR",
+    }
+    event = _mappings_certify_event(body)
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    resp = json.loads(result["body"])
+    assert resp["valid"] is True
+    assert resp["summary"]["status"] == "PASS"
+    assert resp["summary"]["passed"] >= 1
+    assert "results" in resp
+    assert "notes" in resp
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_certify_malformed_json_returns_400(_mock_auth: object) -> None:
+    """POST certify with malformed JSON returns 400."""
+    event = _mappings_certify_event({})
+    event["body"] = "not valid json {"
+    result = handler(event, None)
+    assert result["statusCode"] == 400
+    body = json.loads(result["body"])
+    assert body.get("error", {}).get("code") == "INVALID_JSON"
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_certify_invalid_input_returns_400(_mock_auth: object) -> None:
+    """POST certify with missing required fields returns 400."""
+    body = {"operationCode": "OP", "sourceVendor": "", "targetVendor": "T", "direction": "CANONICAL_TO_VENDOR"}
+    event = _mappings_certify_event(body)
+    result = handler(event, None)
+    assert result["statusCode"] == 400
+    resp = json.loads(result["body"])
+    assert "error" in resp
+
+
+# --- Certification endpoints ---
+
+
+def _mappings_fixtures_event() -> dict:
+    """Build GET /v1/mappings/canonical/fixtures event."""
+    return {
+        "path": "/v1/mappings/canonical/fixtures",
+        "rawPath": "/v1/mappings/canonical/fixtures",
+        "httpMethod": "GET",
+        "headers": {},
+        "queryStringParameters": {},
+        "pathParameters": {},
+        "requestContext": AUTH_REQUEST_CONTEXT,
+    }
+
+
+def _mappings_certify_event(body: dict) -> dict:
+    """Build POST /v1/mappings/canonical/certify event."""
+    return {
+        "path": "/v1/mappings/canonical/certify",
+        "rawPath": "/v1/mappings/canonical/certify",
+        "httpMethod": "POST",
+        "headers": {"content-type": "application/json"},
+        "body": json.dumps(body),
+        "queryStringParameters": {},
+        "pathParameters": {},
+        "requestContext": AUTH_REQUEST_CONTEXT,
+    }
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_fixtures_success(_mock_auth: object) -> None:
+    """GET /v1/mappings/canonical/fixtures returns fixture list."""
+    event = _mappings_fixtures_event()
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    resp = json.loads(result["body"])
+    assert "fixtureSet" in resp
+    assert "items" in resp
+    assert "notes" in resp
+    assert len(resp["items"]) >= 2
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_certify_success(_mock_auth: object) -> None:
+    """POST /v1/mappings/canonical/certify returns certification result."""
+    body = {
+        "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+        "version": "1.0",
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "direction": "CANONICAL_TO_VENDOR",
+    }
+    event = _mappings_certify_event(body)
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    resp = json.loads(result["body"])
+    assert resp["valid"] is True
+    assert resp["summary"]["status"] == "PASS"
+    assert resp["summary"]["passed"] >= 1
+    assert "results" in resp
+    assert "No runtime execution" in " ".join(resp.get("notes", []))
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_certify_malformed_json_returns_400(_mock_auth: object) -> None:
+    """POST certify with malformed JSON returns 400."""
+    event = _mappings_certify_event({})
+    event["body"] = "not valid json {"
+    result = handler(event, None)
+    assert result["statusCode"] == 400
+    body = json.loads(result["body"])
+    assert body.get("error", {}).get("code") == "INVALID_JSON"
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_mappings_certify_invalid_input_returns_400(_mock_auth: object) -> None:
+    """POST certify with missing required fields returns 400."""
+    body = {"operationCode": "OP", "sourceVendor": "", "targetVendor": "T", "direction": "CANONICAL_TO_VENDOR"}
+    event = _mappings_certify_event(body)
     result = handler(event, None)
     assert result["statusCode"] == 400
     resp = json.loads(result["body"])

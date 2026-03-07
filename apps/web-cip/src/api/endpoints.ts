@@ -880,6 +880,204 @@ export async function generateCanonicalMappingPromotionMarkdown(
   return data;
 }
 
+// --- Mapping Certification (fixture-based, deterministic) ---
+
+/** Certification summary */
+export interface MappingCertificationSummary {
+  passed: number;
+  failed: number;
+  warnings: number;
+  status: "PASS" | "FAIL" | "WARN";
+}
+
+/** Per-fixture certification result */
+export interface MappingCertificationResult {
+  fixtureId: string;
+  status: "PASS" | "FAIL";
+  inputPayload: Record<string, unknown>;
+  expectedOutput: Record<string, unknown>;
+  actualOutput: Record<string, unknown>;
+  notes: string[];
+}
+
+/** Certification response */
+export interface MappingCertificationResponse {
+  valid: boolean;
+  operationCode: string;
+  version: string;
+  sourceVendor: string;
+  targetVendor: string;
+  direction: string;
+  fixtureSet: string;
+  summary: MappingCertificationSummary;
+  results: MappingCertificationResult[];
+  notes: string[];
+}
+
+/** Certification payload */
+export interface MappingCertificationPayload {
+  operationCode: string;
+  version?: string;
+  sourceVendor: string;
+  targetVendor: string;
+  direction: "CANONICAL_TO_VENDOR" | "VENDOR_TO_CANONICAL";
+  candidateMapping?: Record<string, unknown> | null;
+  fixtureSet?: string;
+}
+
+/** GET /v1/mappings/canonical/fixtures */
+export async function listCanonicalMappingFixtures(params?: {
+  operationCode?: string;
+  version?: string;
+  sourceVendor?: string;
+  targetVendor?: string;
+  fixtureSet?: string;
+}): Promise<{ fixtureSet: string; items: Array<{ fixtureId: string; direction: string; notes: string[] }>; notes: string[] }> {
+  const search = new URLSearchParams();
+  if (params?.operationCode) search.set("operationCode", params.operationCode);
+  if (params?.version) search.set("version", params.version);
+  if (params?.sourceVendor) search.set("sourceVendor", params.sourceVendor);
+  if (params?.targetVendor) search.set("targetVendor", params.targetVendor);
+  if (params?.fixtureSet) search.set("fixtureSet", params.fixtureSet);
+  const qs = search.toString();
+  const { data } = await adminApi.get<{
+    fixtureSet: string;
+    items: Array<{ fixtureId: string; direction: string; notes: string[] }>;
+    notes: string[];
+  }>(`/v1/mappings/canonical/fixtures${qs ? `?${qs}` : ""}`);
+  return data;
+}
+
+/** POST /v1/mappings/canonical/certify */
+export async function certifyCanonicalMapping(
+  payload: MappingCertificationPayload
+): Promise<MappingCertificationResponse> {
+  const { data } = await adminApi.post<MappingCertificationResponse>(
+    "/v1/mappings/canonical/certify",
+    payload
+  );
+  return data;
+}
+
+// --- Mapping Scaffold (onboarding, artifact-only) ---
+
+/** Scaffold bundle */
+export interface MappingScaffoldBundle {
+  operationCode: string;
+  version: string;
+  sourceVendor: string;
+  targetVendor: string;
+  mappingDefinitionFile: string;
+  fixtureFile: string;
+  testFile: string;
+  directions: string[];
+  reviewChecklist: string[];
+  notes: string[];
+}
+
+/** Scaffold response */
+export interface MappingScaffoldResponse {
+  valid: boolean;
+  scaffoldBundle: MappingScaffoldBundle | null;
+  mappingDefinitionStub: string | null;
+  fixtureStub: string | null;
+  testStub: string | null;
+  markdown: string | null;
+  notes: string[];
+}
+
+/** Scaffold payload */
+export interface MappingScaffoldPayload {
+  operationCode: string;
+  version?: string;
+  sourceVendor: string;
+  targetVendor: string;
+  directions?: ("CANONICAL_TO_VENDOR" | "VENDOR_TO_CANONICAL")[];
+}
+
+/** POST /v1/mappings/canonical/scaffold-bundle */
+export async function generateCanonicalMappingScaffoldBundle(
+  payload: MappingScaffoldPayload
+): Promise<MappingScaffoldResponse> {
+  const { data } = await adminApi.post<MappingScaffoldResponse>(
+    "/v1/mappings/canonical/scaffold-bundle",
+    payload
+  );
+  return data;
+}
+
+/** POST /v1/mappings/canonical/scaffold-bundle/markdown */
+export async function generateCanonicalMappingScaffoldMarkdown(
+  payload: MappingScaffoldPayload
+): Promise<{ markdown: string; notes: string[] }> {
+  const { data } = await adminApi.post<{ markdown: string; notes: string[] }>(
+    "/v1/mappings/canonical/scaffold-bundle/markdown",
+    payload
+  );
+  return data;
+}
+
+// --- Mapping Readiness (coverage dashboard) ---
+
+/** Readiness item */
+export interface MappingReadinessItem {
+  operationCode: string;
+  version: string;
+  sourceVendor: string;
+  targetVendor: string;
+  mappingDefinition: boolean;
+  fixtures: boolean;
+  certification: boolean;
+  runtimeReady: boolean;
+  status: "READY" | "IN_PROGRESS" | "MISSING" | "WARN";
+  notes: string[];
+}
+
+/** Readiness summary */
+export interface MappingReadinessSummary {
+  total: number;
+  ready: number;
+  inProgress: number;
+  missing: number;
+  warn: number;
+}
+
+/** Readiness response */
+export interface MappingReadinessResponse {
+  items: MappingReadinessItem[];
+  summary: MappingReadinessSummary;
+  notes: string[];
+}
+
+/** GET /v1/mappings/canonical/readiness */
+export async function listCanonicalMappingReadiness(params?: {
+  operationCode?: string;
+  sourceVendor?: string;
+  targetVendor?: string;
+  status?: string;
+}): Promise<MappingReadinessResponse> {
+  const search = new URLSearchParams();
+  if (params?.operationCode) search.set("operationCode", params.operationCode);
+  if (params?.sourceVendor) search.set("sourceVendor", params.sourceVendor);
+  if (params?.targetVendor) search.set("targetVendor", params.targetVendor);
+  if (params?.status) search.set("status", params.status);
+  const qs = search.toString();
+  const { data } = await adminApi.get<MappingReadinessResponse>(
+    `/v1/mappings/canonical/readiness${qs ? `?${qs}` : ""}`
+  );
+  return data;
+}
+
+/** GET /v1/mappings/canonical/readiness/{operationCode} */
+export async function getCanonicalMappingReadiness(
+  operationCode: string
+): Promise<MappingReadinessResponse> {
+  const { data } = await adminApi.get<MappingReadinessResponse>(
+    `/v1/mappings/canonical/readiness/${encodeURIComponent(operationCode)}`
+  );
+  return data;
+}
+
 // --- Sandbox (canonical-driven, mock-only) ---
 
 /** GET /v1/sandbox/canonical/operations */
