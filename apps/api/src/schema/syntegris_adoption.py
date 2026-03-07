@@ -17,6 +17,7 @@ from schema.mapping_release_readiness import (
     _derive_release_readiness_item,
     list_mapping_release_readiness,
 )
+from shared.supported_operation_slice import is_supported_canonical_slice
 
 ADOPTION_NOTE = "Adoption status is derived from inventory and Syntegris artifacts. No fabrication."
 
@@ -29,10 +30,6 @@ RELEASE_READY = "RELEASE_READY"
 SYNTEGRIS_READY = "SYNTEGRIS_READY"
 BLOCKED = "BLOCKED"
 
-# Current supported slice (production-mature)
-_SUPPORTED_OPS = frozenset({"GET_VERIFY_MEMBER_ELIGIBILITY", "GET_MEMBER_ACCUMULATORS"})
-_SUPPORTED_PAIR = ("LH001", "LH002")
-
 
 def _normalize_version(version: str | None) -> str:
     """Normalize version to 1.0 format."""
@@ -43,11 +40,8 @@ def _normalize_version(version: str | None) -> str:
 
 
 def _is_supported_slice(operation_code: str, source_vendor: str, target_vendor: str) -> bool:
-    """Check if pair is in current supported Syntegris slice."""
-    op = (operation_code or "").strip().upper()
-    src = (source_vendor or "").strip().upper()
-    tgt = (target_vendor or "").strip().upper()
-    return op in _SUPPORTED_OPS and src == _SUPPORTED_PAIR[0] and tgt == _SUPPORTED_PAIR[1]
+    """Check if pair is in current supported canonical slice."""
+    return is_supported_canonical_slice(operation_code, source_vendor, target_vendor)
 
 
 def _route_for_action(code: str, prefill: dict[str, Any]) -> str:

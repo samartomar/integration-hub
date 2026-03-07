@@ -44,7 +44,7 @@ const DEEP_LINK_ROUTES = [
   { label: "Flow Builder", path: "/admin/flow-builder" },
   { label: "Runtime Preflight", path: "/admin/runtime-preflight" },
   { label: "Canonical Execute", path: "/admin/canonical-execute" },
-  { label: "Operator Guide", path: "/admin/syntegris-operator-guide" },
+  { label: "Operator Guide", path: "/admin/operator-guide" },
 ];
 
 function buildDeepLink(path: string, item: SyntegrisAdoptionItem): string {
@@ -92,7 +92,7 @@ export function SyntegrisAdoptionWorkbenchPage() {
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-xl font-semibold text-gray-900">Adoption</h1>
         <Link
-          to="/admin/syntegris-operator-guide"
+          to="/admin/operator-guide"
           className="text-xs text-slate-600 hover:text-slate-900 hover:underline"
         >
           Operator Guide →

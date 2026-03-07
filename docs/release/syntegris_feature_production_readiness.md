@@ -20,6 +20,8 @@ Current production-maturity scope for the Integration Hub integration adoption f
 
 **Note:** Internal identifiers (e.g. API paths `/v1/syntegris/*`, component names) may retain legacy naming for compatibility. User-facing labels use neutral terms.
 
+For the cutover model (canonical-first as primary path for the supported slice), see [Canonical-First Cutover Model](../product/canonical_first_cutover_model.md).
+
 ## Required Configs / Flags
 
 | Config | Purpose |

@@ -84,7 +84,8 @@ export const router = createBrowserRouter([
       { path: "/admin/canonical-mappings", element: <FeatureRoute featureCode="registry_basic"><CanonicalMappingPage /></FeatureRoute> },
       { path: "/admin/adoption", element: <FeatureRoute featureCode="registry_basic"><AdoptionWorkbenchPage /></FeatureRoute> },
       { path: "/admin/canonical-mapping-readiness", element: <FeatureRoute featureCode="registry_basic"><Navigate to="/admin/adoption?tab=readiness" replace /></FeatureRoute> },
-      { path: "/admin/syntegris-operator-guide", element: <FeatureRoute featureCode="registry_basic"><SyntegrisOperatorGuidePage /></FeatureRoute> },
+      { path: "/admin/operator-guide", element: <FeatureRoute featureCode="registry_basic"><SyntegrisOperatorGuidePage /></FeatureRoute> },
+      { path: "/admin/syntegris-operator-guide", element: <FeatureRoute featureCode="registry_basic"><Navigate to="/admin/operator-guide" replace /></FeatureRoute> },
       { path: "/admin/syntegris-adoption", element: <FeatureRoute featureCode="registry_basic"><Navigate to="/admin/adoption?tab=adoption" replace /></FeatureRoute> },
       { path: "/admin/approvals", element: <FeatureRoute featureCode="approvals"><Navigate to="/admin/registry?tab=access-requests" replace /></FeatureRoute> },
       {

@@ -35,7 +35,7 @@ export function AdoptionWorkbenchPage() {
         <h1 className="text-xl font-semibold text-gray-900">Adoption & Readiness</h1>
         <div className="flex items-center gap-2">
           <Link
-            to="/admin/syntegris-operator-guide"
+            to="/admin/operator-guide"
             className="text-xs text-slate-600 hover:text-slate-900 hover:underline"
           >
             Operator Guide →

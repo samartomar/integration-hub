@@ -29,6 +29,9 @@ import {
   PageLayout,
   SectionCard,
   StatusPill,
+  isSupportedCanonicalSlice,
+  SUPPORTED_SOURCE_VENDOR,
+  SUPPORTED_TARGET_VENDOR,
   type FlowDirection,
   type StatusPillVariant,
 } from "frontend-shared";
@@ -887,13 +890,46 @@ function OperationsTab({
                         >
                           Contract
                         </button>
-                        <Link
-                          to={`/admin/adoption?operationCode=${encodeURIComponent(o.operationCode ?? "")}`}
-                          className="text-slate-600 hover:text-slate-800 text-xs font-medium"
-                          title="View adoption status"
-                        >
-                          Adoption
-                        </Link>
+                        {isSupportedCanonicalSlice(o.operationCode ?? "", SUPPORTED_SOURCE_VENDOR, SUPPORTED_TARGET_VENDOR) ? (
+                          <>
+                            <Link
+                              to={`/admin/canonical?operationCode=${encodeURIComponent(o.operationCode ?? "")}`}
+                              className="text-slate-600 hover:text-slate-800 text-xs font-medium mr-2"
+                              title="Open Canonical Explorer"
+                            >
+                              Canonical
+                            </Link>
+                            <Link
+                              to={`/admin/flow-builder?operationCode=${encodeURIComponent(o.operationCode ?? "")}`}
+                              className="text-slate-600 hover:text-slate-800 text-xs font-medium mr-2"
+                              title="Open Flow Builder"
+                            >
+                              Flow Builder
+                            </Link>
+                            <Link
+                              to={`/admin/adoption?tab=readiness&operationCode=${encodeURIComponent(o.operationCode ?? "")}&sourceVendor=${SUPPORTED_SOURCE_VENDOR}&targetVendor=${SUPPORTED_TARGET_VENDOR}`}
+                              className="text-slate-600 hover:text-slate-800 text-xs font-medium mr-2"
+                              title="Open Mapping Governance"
+                            >
+                              Readiness
+                            </Link>
+                            <Link
+                              to={`/admin/runtime-preflight?operationCode=${encodeURIComponent(o.operationCode ?? "")}&sourceVendor=${SUPPORTED_SOURCE_VENDOR}&targetVendor=${SUPPORTED_TARGET_VENDOR}`}
+                              className="text-slate-600 hover:text-slate-800 text-xs font-medium mr-2"
+                              title="Open Runtime Preflight"
+                            >
+                              Preflight
+                            </Link>
+                          </>
+                        ) : (
+                          <Link
+                            to={`/admin/adoption?operationCode=${encodeURIComponent(o.operationCode ?? "")}`}
+                            className="text-slate-600 hover:text-slate-800 text-xs font-medium"
+                            title="View adoption status"
+                          >
+                            Adoption
+                          </Link>
+                        )}
                       </td>
                     </tr>
                   ))

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getActiveVendorCode } from "frontend-shared";
+import { getActiveVendorCode, isSupportedCanonicalSlice, SUPPORTED_SOURCE_VENDOR } from "frontend-shared";
 import {
   listPartnerSyntegrisCanonicalOperations,
   getPartnerSyntegrisCanonicalOperation,
@@ -237,7 +237,12 @@ export function PartnerCanonicalExecutePage() {
   });
 
   const allItems = opsData?.items ?? [];
-  const items = useMemo(() => allItems, [allItems]);
+  const items = useMemo(() => {
+    if (activeVendor !== SUPPORTED_SOURCE_VENDOR) return allItems;
+    return allItems.filter((op) =>
+      isSupportedCanonicalSlice(op.operationCode ?? "", activeVendor, "LH002")
+    );
+  }, [allItems, activeVendor]);
 
   useEffect(() => {
     if (opDetail?.examples?.requestEnvelope) {

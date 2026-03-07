@@ -39,3 +39,11 @@ export {
   clearEntries as clearDebugEntries,
 } from "./debug/debugStore";
 export { installConsoleCapture } from "./debug/consoleCapture";
+export {
+  SUPPORTED_OPERATIONS,
+  SUPPORTED_SOURCE_VENDOR,
+  SUPPORTED_TARGET_VENDOR,
+  isSupportedCanonicalSlice,
+  listSupportedCanonicalOperations,
+  type SupportedOperationCode,
+} from "./supportedOperationSlice";

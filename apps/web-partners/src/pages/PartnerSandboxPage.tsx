@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { getActiveVendorCode } from "frontend-shared";
+import {
+  SUPPORTED_SOURCE_VENDOR,
+  listSupportedCanonicalOperations,
+} from "frontend-shared";
 import {
   listPartnerSyntegrisCanonicalOperations,
   getPartnerSyntegrisCanonicalOperation,
@@ -66,16 +71,26 @@ export function PartnerSandboxPage() {
     enabled: !!selectedOp,
   });
 
+  const activeVendor = getActiveVendorCode();
   const allItems = opsData?.items ?? [];
+  const gatedItems = useMemo(() => {
+    if (activeVendor === SUPPORTED_SOURCE_VENDOR) {
+      const supported = listSupportedCanonicalOperations();
+      return allItems.filter((op) =>
+        supported.includes((op.operationCode ?? "").toUpperCase())
+      );
+    }
+    return allItems;
+  }, [allItems, activeVendor]);
   const items = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return allItems;
-    return allItems.filter(
+    if (!q) return gatedItems;
+    return gatedItems.filter(
       (op) =>
         (op.operationCode ?? "").toLowerCase().includes(q) ||
         (op.title ?? "").toLowerCase().includes(q)
     );
-  }, [allItems, search]);
+  }, [gatedItems, search]);
   const hasSelection = !!selectedOp;
 
   useEffect(() => {

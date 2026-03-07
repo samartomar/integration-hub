@@ -13,6 +13,13 @@ if str(_src) not in sys.path:
     sys.path.insert(0, str(_src))
 
 from shared.feature_runtime_diagnostics import get_syntegris_feature_diagnostics
+from shared.supported_operation_slice import (
+    SUPPORTED_OPERATIONS,
+    SUPPORTED_SOURCE_VENDOR,
+    SUPPORTED_TARGET_VENDOR,
+    is_supported_canonical_slice,
+    list_supported_canonical_operations,
+)
 from schema.mapping_release_bundle import (
     build_mapping_release_bundle,
     list_release_bundle_candidates,
@@ -83,3 +90,23 @@ def test_release_bundle_generation_for_lh001_lh002(mock_get: object) -> None:
     assert bundle["summary"]["ready"] == 1
     assert bundle["summary"]["status"] == "READY"
     assert "eligibility_v1_lh001_lh002.py" in str(bundle.get("impactedFiles", []))
+
+
+def test_supported_operation_slice_helpers() -> None:
+    """Supported slice helpers return correct values for cutover scope."""
+    ops = list_supported_canonical_operations()
+    assert "GET_VERIFY_MEMBER_ELIGIBILITY" in ops
+    assert "GET_MEMBER_ACCUMULATORS" in ops
+    assert len(ops) == 2
+    assert "GET_VERIFY_MEMBER_ELIGIBILITY" in SUPPORTED_OPERATIONS
+    assert SUPPORTED_SOURCE_VENDOR == "LH001"
+    assert SUPPORTED_TARGET_VENDOR == "LH002"
+
+
+def test_is_supported_canonical_slice() -> None:
+    """is_supported_canonical_slice gates by operation and vendor pair."""
+    assert is_supported_canonical_slice("GET_VERIFY_MEMBER_ELIGIBILITY", "LH001", "LH002") is True
+    assert is_supported_canonical_slice("GET_MEMBER_ACCUMULATORS", "LH001", "LH002") is True
+    assert is_supported_canonical_slice("GET_VERIFY_MEMBER_ELIGIBILITY", "LH001", "LH003") is False
+    assert is_supported_canonical_slice("GET_OTHER_OP", "LH001", "LH002") is False
+    assert is_supported_canonical_slice("GET_VERIFY_MEMBER_ELIGIBILITY") is True

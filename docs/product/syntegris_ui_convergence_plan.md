@@ -80,7 +80,8 @@ The Flow journey is the primary guided operation experience for vendors. Steps: 
 | `/admin/runtime-preflight` | RuntimePreflightPage | Contextual |
 | `/admin/canonical-execute` | CanonicalExecutePage | Contextual |
 | `/admin/canonical-mappings` | CanonicalMappingPage | Contextual |
-| `/admin/syntegris-operator-guide` | SyntegrisOperatorGuidePage | Operator Guide |
+| `/admin/operator-guide` | SyntegrisOperatorGuidePage | Operator Guide (primary; neutral URL) |
+| `/admin/syntegris-operator-guide` | Redirect → `/admin/operator-guide` | — |
 
 ### Vendor
 
@@ -138,6 +139,7 @@ Existing prefill logic is preserved:
 
 ## Related
 
+- [Canonical-First Cutover Model](./canonical_first_cutover_model.md)
 - [Feature Production Readiness](../release/syntegris_feature_production_readiness.md)
 - [Adoption Workbench](../adoption/syntegris_adoption_workbench.md)
 

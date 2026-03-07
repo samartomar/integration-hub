@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getActiveVendorCode } from "frontend-shared";
+import { getActiveVendorCode } from "frontend-shared";
+import {
+  SUPPORTED_SOURCE_VENDOR,
+  listSupportedCanonicalOperations,
+} from "frontend-shared";
 import {
   listPartnerSyntegrisCanonicalOperations,
   getPartnerSyntegrisCanonicalOperation,

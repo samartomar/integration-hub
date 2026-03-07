@@ -1,11 +1,17 @@
 import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { getActiveVendorCode } from "frontend-shared";
 import {
   listPartnerSyntegrisCanonicalOperations,
   getPartnerSyntegrisCanonicalOperation,
   type CanonicalOperationItem,
   type CanonicalOperationDetail,
 } from "../api/endpoints";
+import {
+  isSupportedCanonicalSlice,
+  SUPPORTED_SOURCE_VENDOR,
+  SUPPORTED_TARGET_VENDOR,
+} from "frontend-shared";
 
 type TabId = "overview" | "request-schema" | "response-schema" | "examples";
 
@@ -77,16 +83,23 @@ export function PartnerCanonicalExplorerPage() {
     enabled: !!selectedOp,
   });
 
+  const activeVendor = getActiveVendorCode();
   const allItems = opsData?.items ?? [];
   const items = useMemo(() => {
+    let list = allItems;
+    if (activeVendor === SUPPORTED_SOURCE_VENDOR) {
+      list = list.filter((op) =>
+        isSupportedCanonicalSlice(op.operationCode ?? "", SUPPORTED_SOURCE_VENDOR, SUPPORTED_TARGET_VENDOR)
+      );
+    }
     const q = search.trim().toLowerCase();
-    if (!q) return allItems;
-    return allItems.filter(
+    if (!q) return list;
+    return list.filter(
       (op) =>
         (op.operationCode ?? "").toLowerCase().includes(q) ||
         (op.title ?? "").toLowerCase().includes(q)
     );
-  }, [allItems, search]);
+  }, [allItems, search, activeVendor]);
   const hasSelection = !!selectedOp;
 
   return (

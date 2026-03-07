@@ -183,7 +183,7 @@ export function CanonicalMappingReadinessPage() {
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-xl font-semibold text-gray-900">Mapping Readiness</h1>
         <Link
-          to="/admin/syntegris-operator-guide"
+          to="/admin/operator-guide"
           className="text-xs text-slate-600 hover:text-slate-900 hover:underline"
         >
           Operator Guide →
@@ -192,7 +192,7 @@ export function CanonicalMappingReadinessPage() {
       <p className="text-sm text-gray-600">
         Coverage and readiness across operation/vendor-pair mappings. Derived from code-first
         artifacts. Read-only.{" "}
-        <Link to="/admin/syntegris-operator-guide" className="text-slate-600 hover:underline">
+        <Link to="/admin/operator-guide" className="text-slate-600 hover:underline">
           Operator Guide
         </Link>
       </p>

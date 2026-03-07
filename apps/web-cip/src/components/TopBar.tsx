@@ -18,7 +18,7 @@ const adminNavItems = [
   { path: "/admin/dashboard", label: "Dashboard", featureCode: "home_welcome" },
   { path: "/admin/transactions", label: "Transactions", featureCode: "audit_view" },
   { path: "/admin/mission-control", label: "Mission Control", featureCode: "registry_basic" },
-  { path: "/admin/syntegris-operator-guide", label: "Operator Guide", featureCode: "registry_basic" },
+  { path: "/admin/operator-guide", label: "Operator Guide", featureCode: "registry_basic" },
   { path: "/admin/policy-decisions", label: "Policy Decisions", adminOnly: true },
   { path: "/admin/policy-simulator", label: "Policy Simulator", adminOnly: true },
   { path: "/admin/journey-mode", label: "Journey Mode" },
@@ -36,7 +36,7 @@ function isPrimaryNavActive(pathname: string, label: string): boolean {
       pathname.startsWith("/admin/syntegris-adoption") ||
       pathname.startsWith("/admin/canonical-mapping-readiness")
     );
-  if (label === "Operator Guide") return pathname.startsWith("/admin/syntegris-operator-guide");
+  if (label === "Operator Guide") return pathname.startsWith("/admin/operator-guide") || pathname.startsWith("/admin/syntegris-operator-guide");
   if (label === "AI") return pathname.startsWith("/ai");
   return false;
 }
