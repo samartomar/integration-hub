@@ -76,7 +76,8 @@ def analyze_canonical_request(body: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError("payload must be a JSON object")
     version = (body.get("version") or "").strip() or None
-    return _analyze(operation_code, payload, version)
+    enhance_with_ai = body.get("enhanceWithAi") is True
+    return _analyze(operation_code, payload, version, enhance_with_ai=enhance_with_ai)
 
 
 def analyze_flow_draft(body: dict[str, Any]) -> dict[str, Any]:
@@ -88,7 +89,8 @@ def analyze_flow_draft(body: dict[str, Any]) -> dict[str, Any]:
         draft = body
     if not isinstance(draft, dict):
         raise ValueError("draft must be a JSON object")
-    return _analyze(draft)
+    enhance_with_ai = body.get("enhanceWithAi") is True
+    return _analyze(draft, enhance_with_ai=enhance_with_ai)
 
 
 def analyze_sandbox_result(body: dict[str, Any]) -> dict[str, Any]:
@@ -100,7 +102,8 @@ def analyze_sandbox_result(body: dict[str, Any]) -> dict[str, Any]:
         result = body
     if not isinstance(result, dict):
         raise ValueError("result must be a JSON object")
-    return _analyze(result)
+    enhance_with_ai = body.get("enhanceWithAi") is True
+    return _analyze(result, enhance_with_ai=enhance_with_ai)
 
 
 def run_canonical_preflight(

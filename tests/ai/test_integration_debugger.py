@@ -206,6 +206,34 @@ def test_invalid_sandbox_result_valid_false_returns_fail() -> None:
 # --- build_debug_summary ---
 
 
+def test_enhance_with_ai_false_unchanged() -> None:
+    """When enhance_with_ai=False, report has no aiSummary/remediationPlan (deterministic only)."""
+    report = analyze_canonical_request(
+        "GET_VERIFY_MEMBER_ELIGIBILITY",
+        {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"},
+        version="1.0",
+        enhance_with_ai=False,
+    )
+    assert report["status"] == "PASS"
+    assert "aiSummary" not in report or report.get("aiSummary") is None
+    assert "modelInfo" not in report or report.get("modelInfo", {}).get("enhanced") is not True
+
+
+def test_enhance_with_ai_true_adds_fallback_when_invoker_unavailable() -> None:
+    """When enhance_with_ai=True and AI Gateway invoke fails, fallback aiWarnings/modelInfo added."""
+    report = analyze_canonical_request(
+        "GET_VERIFY_MEMBER_ELIGIBILITY",
+        {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"},
+        version="1.0",
+        enhance_with_ai=True,
+    )
+    assert report["status"] == "PASS"
+    assert "aiWarnings" in report
+    assert any("unavailable" in str(w).lower() for w in report["aiWarnings"])
+    assert report.get("modelInfo", {}).get("enhanced") is False
+    assert report.get("modelInfo", {}).get("reason") == "invoke_failed"
+
+
 def test_build_debug_summary_shape() -> None:
     """build_debug_summary returns expected shape."""
     report = build_debug_summary(

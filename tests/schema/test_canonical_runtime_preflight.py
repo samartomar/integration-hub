@@ -191,3 +191,63 @@ def test_validate_preflight_request_missing_envelope() -> None:
         "targetVendor": "LH002",
     })
     assert any("envelope" in (e.get("field") or "") for e in errors)
+
+
+def test_mapping_definition_found_for_supported_vendor_pair() -> None:
+    """For LH001->LH002 eligibility, MAPPING_DEFINITION_FOUND check passes."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "envelope": _eligibility_envelope(),
+    }
+    result = run_canonical_preflight(payload)
+    assert any(c["code"] == "MAPPING_DEFINITION_FOUND" and c["status"] == "PASS" for c in result["checks"])
+    assert result.get("mappingSummary", {}).get("available") is True
+    assert "vendorRequestPreview" in result
+    assert result["vendorRequestPreview"] == {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"}
+
+
+def test_vendor_request_preview_included_on_success() -> None:
+    """When mapping exists and transform succeeds, vendorRequestPreview is included."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "envelope": _accumulators_envelope(),
+    }
+    result = run_canonical_preflight(payload)
+    assert "vendorRequestPreview" in result
+    assert result["vendorRequestPreview"].get("memberIdWithPrefix") == "LH001-12345"
+    assert result["vendorRequestPreview"].get("asOfDate") == "2025-03-06"
+
+
+def test_missing_mapping_definition_yields_warn() -> None:
+    """When no mapping for vendor pair, MAPPING_DEFINITION_FOUND is WARN."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH999",
+        "envelope": _eligibility_envelope(),
+    }
+    result = run_canonical_preflight(payload)
+    assert any(c["code"] == "MAPPING_DEFINITION_FOUND" and c["status"] == "WARN" for c in result["checks"])
+    assert result.get("mappingSummary") is None
+    assert "vendorRequestPreview" not in result or result.get("vendorRequestPreview") is None
+
+
+def test_missing_required_canonical_field_yields_blocked() -> None:
+    """When canonical payload missing required field, BLOCKED (canonical or mapping check fails)."""
+    envelope = _eligibility_envelope()
+    del envelope["payload"]["memberIdWithPrefix"]
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "envelope": envelope,
+    }
+    result = run_canonical_preflight(payload)
+    assert result["status"] == "BLOCKED"
+    assert result["valid"] is False
+    # Canonical schema validation fails first (required field missing), or mapping transform fails
+    assert any(
+        c["status"] == "FAIL"
+        and c["code"] in ("CANONICAL_REQUEST_VALID", "CANONICAL_TO_VENDOR_TRANSFORM_VALID")
+        for c in result["checks"]
+    )

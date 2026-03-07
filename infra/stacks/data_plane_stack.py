@@ -1090,6 +1090,41 @@ class DataPlaneStack(Stack):
             methods=[apigwv2.HttpMethod.POST],
             integration=registry_integration,
         )
+        admin_api.add_routes(
+            path="/v1/mappings/canonical/operations",
+            methods=[apigwv2.HttpMethod.GET],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/mappings/canonical/preview",
+            methods=[apigwv2.HttpMethod.POST],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/mappings/canonical/validate",
+            methods=[apigwv2.HttpMethod.POST],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/mappings/canonical/promotion-artifact",
+            methods=[apigwv2.HttpMethod.POST],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/mappings/canonical/promotion-artifact/markdown",
+            methods=[apigwv2.HttpMethod.POST],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/mappings/canonical/proposal-package",
+            methods=[apigwv2.HttpMethod.POST],
+            integration=registry_integration,
+        )
+        admin_api.add_routes(
+            path="/v1/mappings/canonical/proposal-package/markdown",
+            methods=[apigwv2.HttpMethod.POST],
+            integration=registry_integration,
+        )
 
         # --- AI Tool Lambda (calls Integration Hub API only; validates control_plane) ---
         ai_tool_path = str(_REPO_ROOT / "lambdas" / "ai_tool")
@@ -1404,6 +1439,21 @@ class DataPlaneStack(Stack):
         ai_gateway_lambda.add_environment("RUNTIME_API_URL", runtime_api_url)
         default_source = self.node.try_get_context("aiGatewaySourceVendor") or "LH001"
         ai_gateway_lambda.add_environment("AI_GATEWAY_SOURCE_VENDOR", str(default_source))
+        # Bedrock debugger enrichment (optional, off by default)
+        ai_gateway_lambda.add_environment(
+            "BEDROCK_DEBUGGER_ENABLED",
+            str(self.node.try_get_context("bedrockDebuggerEnabled") or "false"),
+        )
+        ai_gateway_lambda.add_environment(
+            "BEDROCK_DEBUGGER_MODEL_ID",
+            str(self.node.try_get_context("bedrockDebuggerModelId") or formatter_model_id),
+        )
+        ai_gateway_lambda.add_environment("BEDROCK_DEBUGGER_TIMEOUT_MS", "8000")
+        # Grant registry/vendor-registry permission to invoke AI Gateway for debugger enrichment
+        ai_gateway_lambda.grant_invoke(registry_lambda)
+        ai_gateway_lambda.grant_invoke(vendor_registry_lambda)
+        registry_lambda.add_environment("AI_GATEWAY_FUNCTION_ARN", ai_gateway_lambda.function_arn)
+        vendor_registry_lambda.add_environment("AI_GATEWAY_FUNCTION_ARN", ai_gateway_lambda.function_arn)
         runtime_routing_integration = apigwv2_integrations.HttpLambdaIntegration(
             "RuntimeExecuteIntegration",
             routing_lambda,

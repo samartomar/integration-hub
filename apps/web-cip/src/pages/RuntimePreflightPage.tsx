@@ -105,9 +105,88 @@ function ResultPanel({ result }: { result: PreflightReport }) {
         </div>
       )}
 
+      {result.mappingSummary && (
+        <div>
+          <h3 className="text-sm font-medium text-gray-700 mb-2">Mapping summary</h3>
+          <div className="p-3 rounded-lg border border-gray-200 bg-slate-50 text-sm">
+            <p>
+              <span className="font-medium">Available:</span>{" "}
+              {String(result.mappingSummary.available ?? false)}
+            </p>
+            {result.mappingSummary.direction && (
+              <p>
+                <span className="font-medium">Direction:</span>{" "}
+                {result.mappingSummary.direction}
+              </p>
+            )}
+            {result.mappingSummary.fieldMappings != null && (
+              <p>
+                <span className="font-medium">Field mappings:</span>{" "}
+                {result.mappingSummary.fieldMappings}
+              </p>
+            )}
+            {result.mappingSummary.warnings &&
+              result.mappingSummary.warnings.length > 0 && (
+                <ul className="mt-2 text-amber-700 list-disc list-inside">
+                  {result.mappingSummary.warnings.map((w, i) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                </ul>
+              )}
+          </div>
+        </div>
+      )}
+
+      {result.vendorRequestPreview &&
+        Object.keys(result.vendorRequestPreview).length > 0 && (
+          <JsonBlock
+            data={result.vendorRequestPreview}
+            label="Vendor request preview (mapped)"
+          />
+        )}
+
       {result.normalizedEnvelope && Object.keys(result.normalizedEnvelope).length > 0 && (
         <JsonBlock data={result.normalizedEnvelope} label="Normalized envelope" />
       )}
+
+      {result.mappingSummary && (
+        <div>
+          <h3 className="text-sm font-medium text-gray-700 mb-2">Mapping summary</h3>
+          <div className="p-3 rounded-lg border border-gray-200 bg-slate-50 text-sm space-y-1">
+            <p>
+              <span className="font-medium">Available:</span>{" "}
+              {String(result.mappingSummary.available)}
+            </p>
+            {result.mappingSummary.direction && (
+              <p>
+                <span className="font-medium">Direction:</span>{" "}
+                {result.mappingSummary.direction}
+              </p>
+            )}
+            {result.mappingSummary.fieldMappings != null && (
+              <p>
+                <span className="font-medium">Field mappings:</span>{" "}
+                {result.mappingSummary.fieldMappings}
+              </p>
+            )}
+            {result.mappingSummary.warnings &&
+              result.mappingSummary.warnings.length > 0 && (
+                <p className="text-amber-700">
+                  <span className="font-medium">Warnings:</span>{" "}
+                  {result.mappingSummary.warnings.join("; ")}
+                </p>
+              )}
+          </div>
+        </div>
+      )}
+
+      {result.vendorRequestPreview &&
+        Object.keys(result.vendorRequestPreview).length > 0 && (
+          <JsonBlock
+            data={result.vendorRequestPreview}
+            label="Vendor request preview"
+          />
+        )}
 
       {result.executionPlan && (
         <div>

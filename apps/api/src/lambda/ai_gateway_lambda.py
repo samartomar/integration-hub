@@ -780,8 +780,70 @@ def _handle_data_request(body: dict[str, Any], ctx: dict[str, Any]) -> dict[str,
     })
 
 
+def _handle_internal_mapping_suggest(event: dict[str, Any]) -> dict[str, Any] | None:
+    """
+    Handle internal Lambda invoke for mapping suggestion.
+    Only for action=mapping_suggest. No public API. Returns suggestion dict or None.
+    """
+    if event.get("action") != "mapping_suggest":
+        return None
+    payload = event.get("payload")
+    if not isinstance(payload, dict):
+        return {
+            "summary": None,
+            "proposedFieldMappings": [],
+            "proposedConstants": [],
+            "warnings": ["Invalid mapping context"],
+            "confidence": "none",
+            "modelInfo": {"provider": "bedrock", "enhanced": False, "reason": "invalid_payload"},
+        }
+    try:
+        from ai.bedrock_mapping_suggester import suggest_mapping_with_bedrock
+        return suggest_mapping_with_bedrock(payload)
+    except Exception as e:
+        log_json("WARN", "mapping_suggest_failed", error=str(e)[:200])
+        return {
+            "summary": None,
+            "proposedFieldMappings": [],
+            "proposedConstants": [],
+            "warnings": ["AI mapping suggestion unavailable.", str(e)[:200]],
+            "confidence": "none",
+            "modelInfo": {"provider": "bedrock", "enhanced": False, "reason": "bedrock_error"},
+        }
+
+
+def _handle_internal_debugger_enrich(event: dict[str, Any]) -> dict[str, Any] | None:
+    """
+    Handle internal Lambda invoke for debugger enrichment.
+    Only for action=debugger_enrich. No public API. Returns enrichment dict or None.
+    """
+    if event.get("action") != "debugger_enrich":
+        return None
+    report = event.get("report")
+    if not isinstance(report, dict):
+        return {"aiWarnings": ["Invalid report"], "modelInfo": {"provider": "bedrock", "enhanced": False, "reason": "invalid_report"}}
+    try:
+        from ai.bedrock_debugger_enricher import enrich_debug_report_with_bedrock
+        return enrich_debug_report_with_bedrock(report)
+    except Exception as e:
+        log_json("WARN", "debugger_enrich_failed", error=str(e)[:200])
+        return {
+            "aiWarnings": ["AI enhancement unavailable; deterministic debugger result returned.", str(e)[:200]],
+            "modelInfo": {"provider": "bedrock", "enhanced": False, "reason": "bedrock_error"},
+        }
+
+
 def _handler_impl(event: dict[str, Any], context: object) -> dict[str, Any]:
     """Handle POST /v1/ai/execute. All responses use AI envelope (rawResult, aiFormatter, finalText, error)."""
+    # Internal Lambda invoke for mapping suggestion (no public API, no auth)
+    mapping_result = _handle_internal_mapping_suggest(event)
+    if mapping_result is not None:
+        return mapping_result
+    # Internal Lambda invoke for debugger enrichment (no public API, no auth)
+    internal_result = _handle_internal_debugger_enrich(event)
+    if internal_result is not None:
+        return internal_result
+
     if os.environ.get("AI_ENDPOINT_ENABLED", "true").lower() in ("false", "0"):
         return _ai_envelope_error_response(
             "SERVICE_DISABLED", "AI endpoint is disabled", 503,

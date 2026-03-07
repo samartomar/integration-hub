@@ -61,6 +61,10 @@ def test_post_canonical_execute_dry_run_success(_mock_auth: object) -> None:
     assert "preflight" in body
     assert body["executeRequestPreview"]["targetVendor"] == "LH002"
     assert body["executeRequestPreview"]["operation"] == "GET_VERIFY_MEMBER_ELIGIBILITY"
+    assert "mappingSummary" in body
+    assert body["mappingSummary"].get("available") is True
+    assert "vendorRequestPreview" in body
+    assert body["vendorRequestPreview"] == {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"}
 
 
 @patch("registry_lambda.require_admin_secret", return_value=None)
@@ -94,3 +98,141 @@ def test_post_canonical_execute_blocked_preflight_returns_blocked(_mock_auth: ob
     body = json.loads(result["body"])
     assert body["status"] == "BLOCKED"
     assert body["valid"] is False
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_post_canonical_execute_dry_run_returns_mapping_aware_fields(_mock_auth: object) -> None:
+    """DRY_RUN returns mappingSummary and vendorRequestPreview for mapped vendor pair."""
+    event = _execute_event({
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "DRY_RUN",
+        "envelope": {
+            "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+            "version": "1.0",
+            "direction": "REQUEST",
+            "correlationId": "corr-test",
+            "timestamp": "2025-03-06T12:00:00Z",
+            "context": {},
+            "payload": {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"},
+        },
+    })
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert body["mode"] == "DRY_RUN"
+    assert body["valid"] is True
+    assert "mappingSummary" in body
+    assert body["mappingSummary"].get("available") is True
+    assert "vendorRequestPreview" in body
+    assert body["vendorRequestPreview"].get("memberIdWithPrefix") == "LH001-12345"
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_post_canonical_execute_dry_run_returns_mapping_aware_fields(_mock_auth: object) -> None:
+    """DRY_RUN returns mappingSummary and vendorRequestPreview for supported vendor pair."""
+    event = _execute_event({
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "DRY_RUN",
+        "envelope": {
+            "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+            "version": "1.0",
+            "direction": "REQUEST",
+            "correlationId": "corr-test",
+            "timestamp": "2025-03-06T12:00:00Z",
+            "context": {},
+            "payload": {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"},
+        },
+    })
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert "mappingSummary" in body
+    assert body["mappingSummary"]["available"] is True
+    assert "vendorRequestPreview" in body
+    assert body["vendorRequestPreview"] == {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"}
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_post_canonical_execute_dry_run_returns_mapping_aware_fields(_mock_auth: object) -> None:
+    """DRY_RUN returns mappingSummary and vendorRequestPreview for supported vendor pair."""
+    event = _execute_event({
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "DRY_RUN",
+        "envelope": {
+            "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+            "version": "1.0",
+            "direction": "REQUEST",
+            "correlationId": "corr-test",
+            "timestamp": "2025-03-06T12:00:00Z",
+            "context": {},
+            "payload": {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"},
+        },
+    })
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert body["mode"] == "DRY_RUN"
+    assert body["valid"] is True
+    assert "mappingSummary" in body
+    assert body["mappingSummary"]["available"] is True
+    assert "vendorRequestPreview" in body
+    assert body["vendorRequestPreview"]["memberIdWithPrefix"] == "LH001-12345"
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_post_canonical_execute_dry_run_returns_mapping_aware_fields(_mock_auth: object) -> None:
+    """DRY_RUN returns mappingSummary and vendorRequestPreview for supported vendor pair."""
+    event = _execute_event({
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "DRY_RUN",
+        "envelope": {
+            "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+            "version": "1.0",
+            "direction": "REQUEST",
+            "correlationId": "corr-test",
+            "timestamp": "2025-03-06T12:00:00Z",
+            "context": {},
+            "payload": {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"},
+        },
+    })
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert body["mode"] == "DRY_RUN"
+    assert body["valid"] is True
+    assert "mappingSummary" in body
+    assert body["mappingSummary"]["available"] is True
+    assert "vendorRequestPreview" in body
+    assert body["vendorRequestPreview"]["memberIdWithPrefix"] == "LH001-12345"
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_post_canonical_execute_dry_run_returns_mapping_aware_fields(_mock_auth: object) -> None:
+    """DRY_RUN returns mappingSummary and vendorRequestPreview for supported vendor pair."""
+    event = _execute_event({
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "DRY_RUN",
+        "envelope": {
+            "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+            "version": "1.0",
+            "direction": "REQUEST",
+            "correlationId": "corr-test",
+            "timestamp": "2025-03-06T12:00:00Z",
+            "context": {},
+            "payload": {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"},
+        },
+    })
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert body["mode"] == "DRY_RUN"
+    assert body["valid"] is True
+    assert "mappingSummary" in body
+    assert body["mappingSummary"]["available"] is True
+    assert "vendorRequestPreview" in body
+    assert body["vendorRequestPreview"].get("memberIdWithPrefix") == "LH001-12345"

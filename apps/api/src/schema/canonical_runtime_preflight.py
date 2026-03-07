@@ -16,6 +16,72 @@ from schema.canonical_validator import validate_request_envelope
 PREFLIGHT_NOTE = "Preflight only. No vendor endpoint was called."
 
 
+def _run_mapping_checks(
+    op_code: str,
+    resolved: str,
+    source: str,
+    target: str,
+    canonical_payload: dict[str, Any],
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None, dict[str, Any] | None, list[str]]:
+    """Run mapping-aware checks using canonical_mapping_engine.
+
+    Returns (checks, mapping_summary, vendor_request_preview, warnings).
+    """
+    from schema.canonical_mapping_engine import get_mapping_definition, transform_canonical_to_vendor
+
+    checks: list[dict[str, Any]] = []
+    mapping_summary: dict[str, Any] | None = None
+    vendor_preview: dict[str, Any] | None = None
+    warnings: list[str] = []
+
+    src = (source or "").strip().upper()
+    tgt = (target or "").strip().upper()
+    defn = get_mapping_definition(op_code, resolved, src, tgt)
+
+    if defn is None:
+        checks.append({
+            "code": "MAPPING_DEFINITION_FOUND",
+            "status": "WARN",
+            "message": f"No deterministic mapping for {op_code} {src}->{tgt}. Configure mapping for execution.",
+        })
+        return checks, None, None, ["No mapping definition for vendor pair."]
+
+    checks.append({
+        "code": "MAPPING_DEFINITION_FOUND",
+        "status": "PASS",
+        "message": f"Deterministic mapping found for {op_code} {src}->{tgt}.",
+    })
+
+    c2v = defn.get("canonicalToVendor") or {}
+    field_mappings = sum(1 for v in c2v.values() if isinstance(v, str) and str(v).strip().startswith("$."))
+    mapping_summary = {
+        "available": True,
+        "direction": "CANONICAL_TO_VENDOR",
+        "fieldMappings": field_mappings,
+        "warnings": [],
+    }
+
+    vendor_payload, violations = transform_canonical_to_vendor(
+        op_code, canonical_payload, src, tgt, resolved
+    )
+    if violations:
+        checks.append({
+            "code": "CANONICAL_TO_VENDOR_TRANSFORM_VALID",
+            "status": "FAIL",
+            "message": f"Transform failed: missing required canonical fields. {'; '.join(violations[:3])}",
+        })
+        mapping_summary["warnings"] = violations
+        return checks, mapping_summary, None, violations
+
+    checks.append({
+        "code": "CANONICAL_TO_VENDOR_TRANSFORM_VALID",
+        "status": "PASS",
+        "message": "Canonical payload can be transformed to vendor request.",
+    })
+    vendor_preview = vendor_payload
+    return checks, mapping_summary, vendor_preview, []
+
+
 def validate_preflight_request(payload: dict[str, Any]) -> list[dict[str, Any]]:
     """Validate preflight request shape. Returns list of errors (empty if valid)."""
     errors: list[dict[str, Any]] = []
@@ -74,6 +140,8 @@ def run_canonical_preflight(
     checks: list[dict[str, Any]] = []
     status = "READY"
     normalized_envelope: dict[str, Any] | None = None
+    mapping_summary: dict[str, Any] | None = None
+    vendor_request_preview: dict[str, Any] | None = None
 
     # 1. Canonical operation resolved
     resolved = resolve_version(op_code, version_in or None)
@@ -147,6 +215,17 @@ def run_canonical_preflight(
             target_vendor=target,
         )
 
+    # 3a. Mapping-aware checks (canonical_mapping_engine)
+    canonical_payload = (normalized_envelope.get("payload") or {}) if isinstance(normalized_envelope, dict) else {}
+    if not isinstance(canonical_payload, dict):
+        canonical_payload = {}
+    map_checks, mapping_summary, vendor_request_preview, _ = _run_mapping_checks(
+        op_code, resolved, source, target, canonical_payload
+    )
+    checks.extend(map_checks)
+    if any(c.get("code") == "CANONICAL_TO_VENDOR_TRANSFORM_VALID" and c.get("status") == "FAIL" for c in map_checks):
+        status = "BLOCKED"
+
     # 4. Vendor pair / allowlist (optional, from caller)
     if allowlist_ok is not None:
         if allowlist_ok:
@@ -197,7 +276,7 @@ def run_canonical_preflight(
             status = "WARN"
 
     can_execute = status != "BLOCKED"
-    return {
+    out: dict[str, Any] = {
         "valid": can_execute,
         "status": status,
         "operationCode": op_code,
@@ -213,6 +292,11 @@ def run_canonical_preflight(
         },
         "notes": [PREFLIGHT_NOTE],
     }
+    if mapping_summary is not None:
+        out["mappingSummary"] = mapping_summary
+    if vendor_request_preview is not None:
+        out["vendorRequestPreview"] = vendor_request_preview
+    return out
 
 
 def _checks_for_validation_failure(errors: list[dict[str, Any]]) -> list[dict[str, Any]]:

@@ -1077,6 +1077,12 @@ export interface DebugReport {
   }>;
   normalizedArtifacts: Record<string, unknown>;
   notes: string[];
+  /** Optional AI enrichment (advisory only) */
+  aiSummary?: string | null;
+  remediationPlan?: Array<{ priority?: number; title?: string; reason?: string; action?: string }>;
+  prioritizedNextSteps?: string[];
+  aiWarnings?: string[];
+  modelInfo?: { provider?: string; modelId?: string; enhanced?: boolean; reason?: string };
 }
 
 /** Runtime Preflight: POST /v1/runtime/canonical/preflight request */
@@ -1328,6 +1334,7 @@ export async function analyzePartnerDebugRequest(body: {
   operationCode: string;
   version?: string;
   payload: Record<string, unknown>;
+  enhanceWithAi?: boolean;
 }): Promise<DebugReport> {
   const { data } = await vendorApi.post<DebugReport>(
     "/v1/vendor/syntegris/ai/debug/request/analyze",
@@ -1339,6 +1346,7 @@ export async function analyzePartnerDebugRequest(body: {
 /** POST /v1/vendor/syntegris/ai/debug/flow-draft/analyze */
 export async function analyzePartnerDebugFlowDraft(body: {
   draft: Record<string, unknown>;
+  enhanceWithAi?: boolean;
 }): Promise<DebugReport> {
   const { data } = await vendorApi.post<DebugReport>(
     "/v1/vendor/syntegris/ai/debug/flow-draft/analyze",
@@ -1350,6 +1358,7 @@ export async function analyzePartnerDebugFlowDraft(body: {
 /** POST /v1/vendor/syntegris/ai/debug/sandbox-result/analyze */
 export async function analyzePartnerDebugSandboxResult(body: {
   result: Record<string, unknown>;
+  enhanceWithAi?: boolean;
 }): Promise<DebugReport> {
   const { data } = await vendorApi.post<DebugReport>(
     "/v1/vendor/syntegris/ai/debug/sandbox-result/analyze",

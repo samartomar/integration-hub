@@ -188,6 +188,48 @@ function ReportPanel({ report }: { report: DebugReport }) {
           </ul>
         </div>
       )}
+      {(report.aiSummary || report.remediationPlan?.length || report.prioritizedNextSteps?.length || report.aiWarnings?.length || report.modelInfo) && (
+        <div className="mt-4 pt-4 border-t border-gray-200 space-y-3">
+          <h3 className="text-sm font-medium text-slate-600">AI Enhancement (advisory)</h3>
+          {report.aiSummary && <p className="text-sm text-gray-700">{report.aiSummary}</p>}
+          {report.remediationPlan && report.remediationPlan.length > 0 && (
+            <div>
+              <h4 className="text-xs font-medium text-gray-600 mb-1">Remediation Plan</h4>
+              <ol className="list-decimal list-inside space-y-1 text-sm text-gray-700">
+                {report.remediationPlan.map((r, i) => (
+                  <li key={i}>
+                    {r.title}
+                    {r.reason && <span className="text-gray-600"> — {r.reason}</span>}
+                    {r.action && <span className="block text-xs text-gray-500 ml-4">{r.action}</span>}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+          {report.prioritizedNextSteps && report.prioritizedNextSteps.length > 0 && (
+            <div>
+              <h4 className="text-xs font-medium text-gray-600 mb-1">Next Steps</h4>
+              <ul className="list-disc list-inside text-sm text-gray-700 space-y-0.5">
+                {report.prioritizedNextSteps.map((s, i) => (
+                  <li key={i}>{s}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {report.aiWarnings && report.aiWarnings.length > 0 && (
+            <div className="text-amber-700 text-sm">
+              {report.aiWarnings.map((w, i) => (
+                <p key={i}>{w}</p>
+              ))}
+            </div>
+          )}
+          {report.modelInfo && (
+            <p className="text-xs text-gray-500">
+              {report.modelInfo.enhanced ? `Model: ${report.modelInfo.modelId || "bedrock"}` : `AI unavailable: ${report.modelInfo.reason || "—"}`}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -208,6 +250,7 @@ export function PartnerAIDebuggerPage() {
   const [report, setReport] = useState<DebugReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [enhanceWithAi, setEnhanceWithAi] = useState(false);
 
   const { data: opsData, isLoading: opsLoading, error: opsError } = useQuery({
     queryKey: ["partner-syntegris-canonical-operations"],
@@ -253,6 +296,7 @@ export function PartnerAIDebuggerPage() {
         operationCode: selectedOp.operationCode,
         version: selectedOp.latestVersion,
         payload,
+        enhanceWithAi,
       });
       setReport(result);
     } catch (err: unknown) {
@@ -265,7 +309,7 @@ export function PartnerAIDebuggerPage() {
     } finally {
       setIsAnalyzing(false);
     }
-  }, [selectedOp, requestPayload]);
+  }, [selectedOp, requestPayload, enhanceWithAi]);
 
   const handleAnalyzeFlowDraft = useCallback(async () => {
     setIsAnalyzing(true);
@@ -279,7 +323,7 @@ export function PartnerAIDebuggerPage() {
         setError("Invalid JSON in flow draft");
         return;
       }
-      const result = await analyzePartnerDebugFlowDraft({ draft });
+      const result = await analyzePartnerDebugFlowDraft({ draft, enhanceWithAi });
       setReport(result);
     } catch (err: unknown) {
       const msg =
@@ -291,7 +335,7 @@ export function PartnerAIDebuggerPage() {
     } finally {
       setIsAnalyzing(false);
     }
-  }, [flowDraftJson]);
+  }, [flowDraftJson, enhanceWithAi]);
 
   const handleAnalyzeSandboxResult = useCallback(async () => {
     setIsAnalyzing(true);
@@ -305,7 +349,7 @@ export function PartnerAIDebuggerPage() {
         setError("Invalid JSON in sandbox result");
         return;
       }
-      const reportResult = await analyzePartnerDebugSandboxResult({ result });
+      const reportResult = await analyzePartnerDebugSandboxResult({ result, enhanceWithAi });
       setReport(reportResult);
     } catch (err: unknown) {
       const msg =
@@ -317,7 +361,7 @@ export function PartnerAIDebuggerPage() {
     } finally {
       setIsAnalyzing(false);
     }
-  }, [sandboxResultJson]);
+  }, [sandboxResultJson, enhanceWithAi]);
 
   return (
     <div className="space-y-4">
@@ -360,6 +404,16 @@ export function PartnerAIDebuggerPage() {
           </button>
         ))}
       </div>
+
+      <label className="flex items-center gap-2 text-sm text-gray-700">
+        <input
+          type="checkbox"
+          checked={enhanceWithAi}
+          onChange={(e) => setEnhanceWithAi(e.target.checked)}
+          className="rounded border-gray-300"
+        />
+        Enhance with AI (optional, advisory only)
+      </label>
 
       {mode === "canonical-request" && (
         <div className="flex flex-col lg:flex-row gap-4">

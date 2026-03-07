@@ -2073,6 +2073,215 @@ def _handle_post_flow_draft_validate(event: dict[str, Any]) -> dict[str, Any]:
         return _error(500, "INTERNAL_ERROR", str(e))
 
 
+def _handle_post_flow_runtime_handoff(event: dict[str, Any], run_preflight: bool) -> dict[str, Any]:
+    """POST /v1/flow/runtime/handoff or /v1/flow/runtime/handoff/preflight - build canonical execution package from flow draft."""
+    try:
+        from schema.flow_runtime_handoff import build_flow_runtime_handoff
+
+        try:
+            body = _parse_body_strict(event.get("body"))
+        except json.JSONDecodeError as e:
+            return _error(400, "INVALID_JSON", f"Malformed JSON body: {e}")
+        if not isinstance(body, dict):
+            return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+
+        body_with_preflight = dict(body)
+        if run_preflight:
+            body_with_preflight["runPreflight"] = True
+
+        result = build_flow_runtime_handoff(body_with_preflight)
+
+        if not result.get("valid", True):
+            errors = result.get("errors", [])
+            if errors:
+                first = errors[0]
+                msg = first.get("message", "Validation failed")
+                field = first.get("field")
+                details = {"field": field} if field else None
+                return _error(400, "VALIDATION_ERROR", msg, details=details)
+            return _error(400, "VALIDATION_ERROR", "Flow draft validation failed")
+
+        return _success(200, result)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_get_mappings_canonical_operations(_event: dict[str, Any]) -> dict[str, Any]:
+    """GET /v1/mappings/canonical/operations - list operations with mapping definitions."""
+    try:
+        from schema.canonical_mapping_engine import list_mapping_operations
+
+        items = list_mapping_operations()
+        return _success(200, {"items": items})
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_post_mappings_canonical_preview(event: dict[str, Any]) -> dict[str, Any]:
+    """POST /v1/mappings/canonical/preview - preview transform without execution."""
+    try:
+        from schema.canonical_mapping_engine import preview_mapping
+
+        try:
+            body = _parse_body_strict(event.get("body"))
+        except json.JSONDecodeError as e:
+            return _error(400, "INVALID_JSON", f"Malformed JSON body: {e}")
+        if not isinstance(body, dict):
+            return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+        result = preview_mapping(body)
+        return _success(200, result)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_post_mappings_canonical_validate(event: dict[str, Any]) -> dict[str, Any]:
+    """POST /v1/mappings/canonical/validate - validate mapping availability and payload."""
+    try:
+        from schema.canonical_mapping_engine import validate_mapping_request
+
+        try:
+            body = _parse_body_strict(event.get("body"))
+        except json.JSONDecodeError as e:
+            return _error(400, "INVALID_JSON", f"Malformed JSON body: {e}")
+        if not isinstance(body, dict):
+            return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+        result = validate_mapping_request(body)
+        return _success(200, result)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_post_mappings_canonical_suggest(event: dict[str, Any]) -> dict[str, Any]:
+    """POST /v1/mappings/canonical/suggest - deterministic baseline + optional AI suggestion."""
+    try:
+        from ai.ai_gateway_invoker import invoke_mapping_suggest
+        from schema.ai_mapping_suggestions import suggest_mapping_improvements
+
+        try:
+            body = _parse_body_strict(event.get("body"))
+        except json.JSONDecodeError as e:
+            return _error(400, "INVALID_JSON", f"Malformed JSON body: {e}")
+        if not isinstance(body, dict):
+            return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+
+        suggest_with_ai = body.get("suggestWithAi") is True
+        ai_invoker = invoke_mapping_suggest if suggest_with_ai else None
+        result = suggest_mapping_improvements(body, ai_invoker=ai_invoker)
+        return _success(200, result)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_post_mappings_canonical_compare(event: dict[str, Any]) -> dict[str, Any]:
+    """POST /v1/mappings/canonical/compare - compare deterministic mapping to proposed suggestion."""
+    try:
+        from schema.ai_mapping_suggestions import compare_mapping_definition_to_suggestion
+
+        try:
+            body = _parse_body_strict(event.get("body"))
+        except json.JSONDecodeError as e:
+            return _error(400, "INVALID_JSON", f"Malformed JSON body: {e}")
+        if not isinstance(body, dict):
+            return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+
+        definition = body.get("definition") or body.get("existingMappingDefinition")
+        suggestion = body.get("suggestion") or body.get("proposedMapping")
+        if not isinstance(definition, dict):
+            return _error(400, "VALIDATION_ERROR", "definition (existing mapping) is required")
+        if not isinstance(suggestion, dict):
+            return _error(400, "VALIDATION_ERROR", "suggestion (proposed mapping) is required")
+
+        comparison = compare_mapping_definition_to_suggestion(definition, suggestion)
+        return _success(200, {"comparison": comparison, "notes": ["Deterministic mapping remains authoritative."]})
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_post_mappings_canonical_promotion_artifact(event: dict[str, Any]) -> dict[str, Any]:
+    """POST /v1/mappings/canonical/promotion-artifact - generate code-first promotion artifact."""
+    try:
+        from schema.mapping_promotion_artifact import build_mapping_promotion_artifact
+
+        try:
+            body = _parse_body_strict(event.get("body"))
+        except json.JSONDecodeError as e:
+            return _error(400, "INVALID_JSON", f"Malformed JSON body: {e}")
+        if not isinstance(body, dict):
+            return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+
+        result = build_mapping_promotion_artifact(body)
+        if not result.get("valid"):
+            return _error(400, "VALIDATION_ERROR", result.get("notes", ["Invalid proposal package."])[0])
+        return _success(200, result)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_post_mappings_canonical_promotion_artifact_markdown(event: dict[str, Any]) -> dict[str, Any]:
+    """POST /v1/mappings/canonical/promotion-artifact/markdown - generate markdown artifact."""
+    try:
+        from schema.mapping_promotion_artifact import build_mapping_promotion_artifact
+
+        try:
+            body = _parse_body_strict(event.get("body"))
+        except json.JSONDecodeError as e:
+            return _error(400, "INVALID_JSON", f"Malformed JSON body: {e}")
+        if not isinstance(body, dict):
+            return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+
+        result = build_mapping_promotion_artifact(body)
+        if not result.get("valid"):
+            return _error(400, "VALIDATION_ERROR", result.get("notes", ["Invalid proposal package."])[0])
+        markdown = result.get("markdown") or ""
+        artifact = result.get("promotionArtifact")
+        proposal_id = artifact.get("proposalId") if isinstance(artifact, dict) else None
+        return _success(200, {"markdown": markdown, "proposalId": proposal_id})
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_post_mappings_canonical_proposal_package(event: dict[str, Any]) -> dict[str, Any]:
+    """POST /v1/mappings/canonical/proposal-package - generate structured proposal package."""
+    try:
+        from schema.mapping_proposal_package import build_mapping_proposal_package
+
+        try:
+            body = _parse_body_strict(event.get("body"))
+        except json.JSONDecodeError as e:
+            return _error(400, "INVALID_JSON", f"Malformed JSON body: {e}")
+        if not isinstance(body, dict):
+            return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+
+        result = build_mapping_proposal_package(body)
+        if not result.get("valid"):
+            return _error(400, "VALIDATION_ERROR", result.get("notes", ["Invalid proposal package."])[0])
+        return _success(200, result)
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
+def _handle_post_mappings_canonical_proposal_package_markdown(event: dict[str, Any]) -> dict[str, Any]:
+    """POST /v1/mappings/canonical/proposal-package/markdown - generate markdown artifact."""
+    try:
+        from schema.mapping_proposal_package import build_mapping_proposal_package, build_mapping_proposal_markdown
+
+        try:
+            body = _parse_body_strict(event.get("body"))
+        except json.JSONDecodeError as e:
+            return _error(400, "INVALID_JSON", f"Malformed JSON body: {e}")
+        if not isinstance(body, dict):
+            return _error(400, "VALIDATION_ERROR", "Request body must be a JSON object")
+
+        result = build_mapping_proposal_package(body)
+        if not result.get("valid"):
+            return _error(400, "VALIDATION_ERROR", result.get("notes", ["Invalid proposal package."])[0])
+        package_obj = result.get("proposalPackage")
+        markdown = build_mapping_proposal_markdown(package_obj) if package_obj else ""
+        return _success(200, {"markdown": markdown, "proposalId": package_obj.get("proposalId") if package_obj else None})
+    except Exception as e:
+        return _error(500, "INTERNAL_ERROR", str(e))
+
+
 def _handle_get_sandbox_operations(_event: dict[str, Any]) -> dict[str, Any]:
     """GET /v1/sandbox/canonical/operations - list canonical operations for sandbox."""
     try:
@@ -2178,7 +2387,8 @@ def _handle_post_ai_debug_request_analyze(event: dict[str, Any]) -> dict[str, An
         if not isinstance(payload, dict):
             return _error(400, "VALIDATION_ERROR", "payload must be a JSON object")
         version = (body.get("version") or "").strip() or None
-        report = analyze_canonical_request(operation_code, payload, version)
+        enhance_with_ai = body.get("enhanceWithAi") is True
+        report = analyze_canonical_request(operation_code, payload, version, enhance_with_ai=enhance_with_ai)
         return _success(200, report)
     except Exception as e:
         return _error(500, "INTERNAL_ERROR", str(e))
@@ -2197,7 +2407,8 @@ def _handle_post_ai_debug_flow_draft_analyze(event: dict[str, Any]) -> dict[str,
             draft = body
         if not isinstance(draft, dict):
             return _error(400, "VALIDATION_ERROR", "draft must be a JSON object")
-        report = analyze_flow_draft(draft)
+        enhance_with_ai = body.get("enhanceWithAi") is True
+        report = analyze_flow_draft(draft, enhance_with_ai=enhance_with_ai)
         return _success(200, report)
     except Exception as e:
         return _error(500, "INTERNAL_ERROR", str(e))
@@ -2216,7 +2427,8 @@ def _handle_post_ai_debug_sandbox_result_analyze(event: dict[str, Any]) -> dict[
             result = body
         if not isinstance(result, dict):
             return _error(400, "VALIDATION_ERROR", "result must be a JSON object")
-        report = analyze_sandbox_result(result)
+        enhance_with_ai = body.get("enhanceWithAi") is True
+        report = analyze_sandbox_result(result, enhance_with_ai=enhance_with_ai)
         return _success(200, report)
     except Exception as e:
         return _error(500, "INTERNAL_ERROR", str(e))
@@ -2262,13 +2474,24 @@ def _handle_post_runtime_canonical_preflight(event: dict[str, Any]) -> dict[str,
         if isinstance(envelope, dict):
             op_code = (envelope.get("operationCode") or envelope.get("operation_code") or "").strip().upper()
         allowlist_ok: bool | None = None
+        mapping_ok: bool | None = None
         try:
             with _get_connection() as conn:
                 if source and target and op_code:
                     allowlist_ok = _check_allowlist_for_preflight(conn, source, target, op_code)
         except Exception:
             pass
-        result = run_canonical_preflight(body, allowlist_ok=allowlist_ok)
+        try:
+            from schema.canonical_mapping_engine import get_mapping_definition
+            from schema.canonical_registry import resolve_version
+
+            version_in = (envelope.get("version") or "") if isinstance(envelope, dict) else ""
+            resolved = resolve_version(op_code, version_in or None)
+            if resolved and source and target:
+                mapping_ok = get_mapping_definition(op_code, resolved, source, target) is not None
+        except Exception:
+            pass
+        result = run_canonical_preflight(body, allowlist_ok=allowlist_ok, mapping_ok=mapping_ok)
         return _success(200, result)
     except Exception as e:
         return _error(500, "INTERNAL_ERROR", str(e))
@@ -2293,11 +2516,22 @@ def _handle_post_runtime_canonical_execute(event: dict[str, Any]) -> dict[str, A
             op_code = (envelope.get("operationCode") or envelope.get("operation_code") or "").strip().upper()
 
         allowlist_ok: bool | None = None
+        mapping_ok: bool | None = None
         target = (body.get("targetVendor") or body.get("target_vendor") or "").strip()
         try:
             with _get_connection() as conn:
                 if source and target and op_code:
                     allowlist_ok = _check_allowlist_for_preflight(conn, source, target, op_code)
+        except Exception:
+            pass
+        try:
+            from schema.canonical_mapping_engine import get_mapping_definition
+            from schema.canonical_registry import resolve_version
+
+            version_in = (envelope.get("version") or "") if isinstance(envelope, dict) else ""
+            resolved = resolve_version(op_code, version_in or None)
+            if resolved and source and target:
+                mapping_ok = get_mapping_definition(op_code, resolved, source, target) is not None
         except Exception:
             pass
 
@@ -2344,7 +2578,7 @@ def _handle_post_runtime_canonical_execute(event: dict[str, Any]) -> dict[str, A
             }
             return routing_handler(execute_event, None)
 
-        result = run_canonical_bridge(body, executor=executor, allowlist_ok=allowlist_ok)
+        result = run_canonical_bridge(body, executor=executor, allowlist_ok=allowlist_ok, mapping_ok=mapping_ok)
         return _success(200, result)
     except Exception as e:
         return _error(500, "INTERNAL_ERROR", str(e))
@@ -4545,6 +4779,116 @@ def _handler_impl(event: dict[str, Any], context: object) -> dict[str, Any]:
         and event.get("httpMethod") == "POST"
     ):
         return _handle_post_flow_draft_validate(event)
+
+    # POST /v1/flow/runtime/handoff/preflight - build handoff + run preflight
+    if (
+        len(segments) == 5
+        and segments[:5] == ["v1", "flow", "runtime", "handoff", "preflight"]
+        and event.get("httpMethod") == "POST"
+    ):
+        return _handle_post_flow_runtime_handoff(event, run_preflight=True)
+
+    # POST /v1/flow/runtime/handoff - build canonical execution package from flow draft
+    if (
+        len(segments) == 4
+        and segments[:4] == ["v1", "flow", "runtime", "handoff"]
+        and event.get("httpMethod") == "POST"
+    ):
+        return _handle_post_flow_runtime_handoff(event, run_preflight=False)
+
+    # Require JWT authorizer for all /v1/mappings/* GET and POST
+    if len(segments) >= 2 and segments[:2] == ["v1", "mappings"]:
+        auth_err = require_admin_secret(event)
+        is_admin = auth_err is None
+        if auth_err is not None:
+            return add_cors_to_response(auth_err)
+        decision = evaluate_policy(
+            PolicyContext(
+                surface="ADMIN",
+                action="REGISTRY_READ",
+                vendor_code="ADMIN" if is_admin else None,
+                target_vendor_code=None,
+                operation_code=None,
+                requested_source_vendor_code=None,
+                is_admin=is_admin,
+                groups=[],
+                query={},
+            )
+        )
+        if not decision.allow:
+            return add_cors_to_response(policy_denied_response(decision))
+
+    # GET /v1/mappings/canonical/operations - list operations with mapping definitions
+    if (
+        len(segments) == 4
+        and segments[:4] == ["v1", "mappings", "canonical", "operations"]
+        and event.get("httpMethod") == "GET"
+    ):
+        return _handle_get_mappings_canonical_operations(event)
+
+    # POST /v1/mappings/canonical/preview - preview transform
+    if (
+        len(segments) == 4
+        and segments[:4] == ["v1", "mappings", "canonical", "preview"]
+        and event.get("httpMethod") == "POST"
+    ):
+        return _handle_post_mappings_canonical_preview(event)
+
+    # POST /v1/mappings/canonical/validate - validate mapping availability
+    if (
+        len(segments) == 4
+        and segments[:4] == ["v1", "mappings", "canonical", "validate"]
+        and event.get("httpMethod") == "POST"
+    ):
+        return _handle_post_mappings_canonical_validate(event)
+
+    # POST /v1/mappings/canonical/suggest - deterministic baseline + optional AI suggestion
+    if (
+        len(segments) == 4
+        and segments[:4] == ["v1", "mappings", "canonical", "suggest"]
+        and event.get("httpMethod") == "POST"
+    ):
+        return _handle_post_mappings_canonical_suggest(event)
+
+    # POST /v1/mappings/canonical/compare - compare mapping definition to suggestion
+    if (
+        len(segments) == 4
+        and segments[:4] == ["v1", "mappings", "canonical", "compare"]
+        and event.get("httpMethod") == "POST"
+    ):
+        return _handle_post_mappings_canonical_compare(event)
+
+    # POST /v1/mappings/canonical/promotion-artifact/markdown - generate markdown artifact
+    if (
+        len(segments) == 5
+        and segments[:5] == ["v1", "mappings", "canonical", "promotion-artifact", "markdown"]
+        and event.get("httpMethod") == "POST"
+    ):
+        return _handle_post_mappings_canonical_promotion_artifact_markdown(event)
+
+    # POST /v1/mappings/canonical/promotion-artifact - generate promotion artifact
+    if (
+        len(segments) == 4
+        and segments[:4] == ["v1", "mappings", "canonical", "promotion-artifact"]
+        and event.get("httpMethod") == "POST"
+    ):
+        return _handle_post_mappings_canonical_promotion_artifact(event)
+
+    # POST /v1/mappings/canonical/proposal-package/markdown - generate markdown artifact
+    if (
+        len(segments) == 5
+        and segments[:5] == ["v1", "mappings", "canonical", "proposal-package", "markdown"]
+        and event.get("httpMethod") == "POST"
+    ):
+        return _handle_post_mappings_canonical_proposal_package_markdown(event)
+
+    # POST /v1/mappings/canonical/proposal-package - generate structured proposal package
+    if (
+        len(segments) == 4
+        and segments[:4] == ["v1", "mappings", "canonical", "proposal-package"]
+        and event.get("httpMethod") == "POST"
+    ):
+        return _handle_post_mappings_canonical_proposal_package(event)
 
     # Require JWT authorizer for POST /v1/runtime/canonical/preflight (admin control-plane)
     if (

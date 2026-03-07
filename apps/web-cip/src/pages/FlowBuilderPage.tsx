@@ -1,12 +1,15 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   listFlowCanonicalOperations,
   getFlowCanonicalOperation,
   validateFlowDraft,
+  generateFlowRuntimeHandoff,
+  generateFlowRuntimeHandoffPreflight,
   type CanonicalOperationItem,
   type CanonicalOperationDetail,
   type FlowDraftValidateResult,
+  type FlowRuntimeHandoffResponse,
 } from "../api/endpoints";
 
 type TabId = "overview" | "request-schema" | "response-schema" | "examples";
@@ -53,6 +56,10 @@ export function FlowBuilderPage() {
   const [validateResult, setValidateResult] = useState<FlowDraftValidateResult | null>(null);
   const [validateError, setValidateError] = useState<string | null>(null);
   const [isValidating, setIsValidating] = useState(false);
+  const [payloadJson, setPayloadJson] = useState("{}");
+  const [handoffResult, setHandoffResult] = useState<FlowRuntimeHandoffResponse | null>(null);
+  const [handoffError, setHandoffError] = useState<string | null>(null);
+  const [isGeneratingHandoff, setIsGeneratingHandoff] = useState(false);
 
   const { data: opsData, isLoading: opsLoading, error: opsError } = useQuery({
     queryKey: ["flow-canonical-operations"],
@@ -107,6 +114,58 @@ export function FlowBuilderPage() {
       setIsValidating(false);
     }
   }, [selectedOp, draft]);
+
+  useEffect(() => {
+    if (opDetail?.examples?.request && hasSelection) {
+      setPayloadJson(JSON.stringify(opDetail.examples.request as Record<string, unknown>, null, 2));
+    }
+  }, [opDetail?.operationCode, opDetail?.examples?.request, hasSelection]);
+
+  const handleGenerateHandoff = useCallback(
+    async (runPreflight: boolean) => {
+      if (!selectedOp) return;
+      setIsGeneratingHandoff(true);
+      setHandoffError(null);
+      setHandoffResult(null);
+      try {
+        let payloadObj: Record<string, unknown> = {};
+        try {
+          payloadObj = JSON.parse(payloadJson);
+        } catch {
+          setHandoffError("Invalid JSON in canonical payload");
+          return;
+        }
+        const req = {
+          draft: {
+            name: draft.name.trim(),
+            operationCode: selectedOp.operationCode,
+            version: selectedOp.latestVersion,
+            sourceVendor: draft.sourceVendor.trim(),
+            targetVendor: draft.targetVendor.trim(),
+            trigger: { type: draft.triggerType },
+            mappingMode: "CANONICAL_FIRST" as const,
+            notes: draft.notes.trim() || undefined,
+          },
+          payload: Object.keys(payloadObj).length > 0 ? payloadObj : undefined,
+          context: {},
+        };
+        const result = runPreflight
+          ? await generateFlowRuntimeHandoffPreflight(req)
+          : await generateFlowRuntimeHandoff(req);
+        setHandoffResult(result);
+      } catch (err: unknown) {
+        const msg =
+          err && typeof err === "object" && "response" in err
+            ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data
+                ?.error?.message ?? "Handoff request failed"
+            : String(err);
+        setHandoffError(msg);
+      } finally {
+        setIsGeneratingHandoff(false);
+      }
+    },
+    [selectedOp, draft, payloadJson]
+  );
 
   return (
     <div className="space-y-4">
@@ -354,8 +413,25 @@ export function FlowBuilderPage() {
                       className="w-full px-2 py-1.5 border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-slate-500"
                     />
                   </div>
+                  <div className="sm:col-span-2">
+                    <label htmlFor="payload-json" className="block text-gray-700 mb-1">
+                      Canonical payload (JSON)
+                    </label>
+                    <textarea
+                      id="payload-json"
+                      value={payloadJson}
+                      onChange={(e) => setPayloadJson(e.target.value)}
+                      rows={8}
+                      className="w-full px-2 py-1.5 text-sm font-mono border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-slate-500"
+                      placeholder='{"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"}'
+                      spellCheck={false}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Prefilled from example when operation selected. Leave empty or use {"{}"} to use canonical example.
+                    </p>
+                  </div>
                 </div>
-                <div className="mt-4">
+                <div className="mt-4 flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={handleValidate}
@@ -363,6 +439,22 @@ export function FlowBuilderPage() {
                     className="px-4 py-2 text-sm font-medium text-white bg-slate-600 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg"
                   >
                     {isValidating ? "Validating…" : "Validate Draft"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleGenerateHandoff(false)}
+                    disabled={isGeneratingHandoff}
+                    className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 rounded-lg border border-slate-300"
+                  >
+                    {isGeneratingHandoff ? "Generating…" : "Generate Runtime Handoff"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleGenerateHandoff(true)}
+                    disabled={isGeneratingHandoff}
+                    className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 rounded-lg border border-slate-300"
+                  >
+                    {isGeneratingHandoff ? "Generating…" : "Generate Handoff + Preflight"}
                   </button>
                 </div>
 
@@ -407,6 +499,49 @@ export function FlowBuilderPage() {
                           {JSON.stringify(validateResult.normalizedDraft, null, 2)}
                         </pre>
                       </div>
+                    )}
+                  </div>
+                )}
+
+                {handoffError && (
+                  <div className="mt-4 p-3 rounded-lg bg-red-50 border border-red-200">
+                    <p className="text-sm font-medium text-red-800">Handoff failed</p>
+                    <p className="text-sm text-red-700 mt-1">{handoffError}</p>
+                  </div>
+                )}
+                {handoffResult && (
+                  <div className="mt-4 p-4 rounded-lg border border-gray-200 bg-gray-50 space-y-3">
+                    <h4 className="text-sm font-medium text-gray-900">Runtime Handoff Result</h4>
+                    {handoffResult.canonicalExecutionPackage && (
+                      <div>
+                        <p className="text-xs font-medium text-gray-600 mb-1">Canonical execution package</p>
+                        <pre className="text-xs text-gray-700 bg-white rounded-lg p-3 overflow-x-auto border border-gray-200 font-mono">
+                          {JSON.stringify(handoffResult.canonicalExecutionPackage, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                    {handoffResult.preflight && (
+                      <div>
+                        {handoffResult.preflight.mappingSummary && (
+                          <div className="mb-2 p-2 rounded-lg bg-slate-50 border border-slate-200 text-xs">
+                            <span className="font-medium text-gray-700">Mapping:</span>{" "}
+                            {handoffResult.preflight.mappingSummary.available
+                              ? `${handoffResult.preflight.mappingSummary.fieldMappings ?? 0} field mappings, direction ${handoffResult.preflight.mappingSummary.direction ?? "—"}`
+                              : "Not available"}
+                          </div>
+                        )}
+                        <p className="text-xs font-medium text-gray-600 mb-1">Preflight</p>
+                        <pre className="text-xs text-gray-700 bg-white rounded-lg p-3 overflow-x-auto border border-gray-200 font-mono">
+                          {JSON.stringify(handoffResult.preflight, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                    {handoffResult.notes && handoffResult.notes.length > 0 && (
+                      <ul className="text-xs text-gray-600 list-disc list-inside">
+                        {handoffResult.notes.map((n, i) => (
+                          <li key={i}>{n}</li>
+                        ))}
+                      </ul>
                     )}
                   </div>
                 )}

@@ -532,6 +532,354 @@ export async function validateFlowDraft(
   return data;
 }
 
+// --- Flow Runtime Handoff ---
+
+/** Flow runtime handoff request payload */
+export interface FlowRuntimeHandoffPayload {
+  draft: {
+    name: string;
+    operationCode: string;
+    version: string;
+    sourceVendor: string;
+    targetVendor: string;
+    trigger: { type: "MANUAL" | "API" };
+    mappingMode: "CANONICAL_FIRST";
+    notes?: string;
+  };
+  payload?: Record<string, unknown>;
+  context?: Record<string, unknown>;
+  runPreflight?: boolean;
+}
+
+/** Canonical execution package from handoff */
+export interface CanonicalExecutionPackage {
+  sourceVendor: string;
+  targetVendor: string;
+  envelope: {
+    operationCode: string;
+    version: string;
+    direction: string;
+    correlationId: string;
+    timestamp: string;
+    context: Record<string, unknown>;
+    payload: Record<string, unknown>;
+  };
+}
+
+/** Flow runtime handoff response */
+export interface FlowRuntimeHandoffResponse {
+  valid: boolean;
+  flowName: string;
+  operationCode: string;
+  canonicalVersion: string;
+  sourceVendor: string;
+  targetVendor: string;
+  triggerType: string;
+  mappingMode: string;
+  canonicalExecutionPackage: CanonicalExecutionPackage | null;
+  preflight?: {
+    valid: boolean;
+    status: string;
+    checks?: Array<{ code: string; status: string; message: string }>;
+    executionPlan?: { mode: string; canExecute: boolean; nextStep?: string };
+    notes?: string[];
+  };
+  errors?: Array<{ message: string; field?: string }>;
+  notes: string[];
+}
+
+/** Alias for FlowRuntimeHandoffResponse */
+export type FlowRuntimeHandoffResult = FlowRuntimeHandoffResponse;
+
+/** POST /v1/flow/runtime/handoff - build canonical execution package from flow draft */
+export async function generateFlowRuntimeHandoff(
+  payload: FlowRuntimeHandoffPayload
+): Promise<FlowRuntimeHandoffResponse> {
+  const { data } = await adminApi.post<FlowRuntimeHandoffResponse>(
+    "/v1/flow/runtime/handoff",
+    { ...payload, runPreflight: false }
+  );
+  return data;
+}
+
+/** POST /v1/flow/runtime/handoff/preflight - build handoff + run preflight */
+export async function generateFlowRuntimeHandoffPreflight(
+  payload: FlowRuntimeHandoffPayload
+): Promise<FlowRuntimeHandoffResponse> {
+  const { data } = await adminApi.post<FlowRuntimeHandoffResponse>(
+    "/v1/flow/runtime/handoff/preflight",
+    { ...payload, runPreflight: true }
+  );
+  return data;
+}
+
+// --- Canonical Mapping Engine ---
+
+/** Canonical mapping operation item (operations with mapping definitions) */
+export interface CanonicalMappingOperationItem {
+  operationCode: string;
+  version: string;
+  title?: string;
+  description?: string;
+  vendorPairs?: Array<{ sourceVendor: string; targetVendor: string }>;
+}
+
+/** Canonical mapping preview request */
+export interface CanonicalMappingPreviewPayload {
+  operationCode: string;
+  version?: string;
+  sourceVendor: string;
+  targetVendor: string;
+  direction: "CANONICAL_TO_VENDOR" | "VENDOR_TO_CANONICAL";
+  inputPayload: Record<string, unknown>;
+}
+
+/** Canonical mapping preview response */
+export interface CanonicalMappingPreviewResponse {
+  valid: boolean;
+  operationCode: string;
+  version: string;
+  sourceVendor: string;
+  targetVendor: string;
+  direction: string;
+  mappingDefinitionSummary: {
+    fieldMappings: number;
+    constants: number;
+    warnings?: string[];
+  };
+  inputPayload: Record<string, unknown>;
+  outputPayload: Record<string, unknown>;
+  errors?: string[];
+  notes: string[];
+}
+
+/** Canonical mapping validate response */
+export interface CanonicalMappingValidateResponse {
+  valid: boolean;
+  operationCode: string;
+  version: string;
+  sourceVendor: string;
+  targetVendor: string;
+  direction: string;
+  mappingAvailable: boolean;
+  warnings: string[];
+  notes: string[];
+}
+
+/** GET /v1/mappings/canonical/operations */
+export async function listCanonicalMappingOperations(): Promise<{
+  items: CanonicalMappingOperationItem[];
+}> {
+  const { data } = await adminApi.get<{ items: CanonicalMappingOperationItem[] }>(
+    "/v1/mappings/canonical/operations"
+  );
+  return data;
+}
+
+/** POST /v1/mappings/canonical/preview */
+export async function previewCanonicalMapping(
+  payload: CanonicalMappingPreviewPayload
+): Promise<CanonicalMappingPreviewResponse> {
+  const { data } = await adminApi.post<CanonicalMappingPreviewResponse>(
+    "/v1/mappings/canonical/preview",
+    payload
+  );
+  return data;
+}
+
+/** POST /v1/mappings/canonical/validate */
+export async function validateCanonicalMapping(
+  payload: CanonicalMappingPreviewPayload
+): Promise<CanonicalMappingValidateResponse> {
+  const { data } = await adminApi.post<CanonicalMappingValidateResponse>(
+    "/v1/mappings/canonical/validate",
+    payload
+  );
+  return data;
+}
+
+/** Mapping suggestion payload */
+export interface CanonicalMappingSuggestPayload {
+  operationCode: string;
+  version?: string;
+  sourceVendor: string;
+  targetVendor: string;
+  direction: "CANONICAL_TO_VENDOR" | "VENDOR_TO_CANONICAL";
+  suggestWithAi?: boolean;
+  vendorShape?: Record<string, unknown>;
+  inputPayload?: Record<string, unknown>;
+}
+
+/** Mapping suggestion response */
+export interface CanonicalMappingSuggestResponse {
+  valid: boolean;
+  operationCode: string;
+  version: string;
+  sourceVendor: string;
+  targetVendor: string;
+  direction: string;
+  deterministicBaseline: { fieldMappings: number; constants: number; warnings: string[] };
+  existingMappingDefinition?: Record<string, unknown>;
+  aiSuggestion?: {
+    summary?: string;
+    proposedFieldMappings: Array<{ from: string; to: string }>;
+    proposedConstants: unknown[];
+    warnings: string[];
+    confidence: string;
+  };
+  comparison?: { unchanged: unknown[]; added: unknown[]; changed: unknown[] };
+  notes: string[];
+}
+
+/** POST /v1/mappings/canonical/suggest */
+export async function suggestCanonicalMapping(
+  payload: CanonicalMappingSuggestPayload
+): Promise<CanonicalMappingSuggestResponse> {
+  const { data } = await adminApi.post<CanonicalMappingSuggestResponse>(
+    "/v1/mappings/canonical/suggest",
+    payload
+  );
+  return data;
+}
+
+/** Mapping compare payload */
+export interface CanonicalMappingComparePayload {
+  definition: Record<string, unknown>;
+  suggestion: { proposedFieldMappings?: Array<{ from: string; to: string }> };
+}
+
+/** POST /v1/mappings/canonical/compare */
+export async function compareCanonicalMapping(
+  payload: CanonicalMappingComparePayload
+): Promise<{ comparison: { unchanged: unknown[]; added: unknown[]; changed: unknown[] }; notes: string[] }> {
+  const { data } = await adminApi.post<{ comparison: { unchanged: unknown[]; added: unknown[]; changed: unknown[] }; notes: string[] }>(
+    "/v1/mappings/canonical/compare",
+    payload
+  );
+  return data;
+}
+
+/** Mapping proposal package payload */
+export interface MappingProposalPackagePayload {
+  operationCode: string;
+  version?: string;
+  sourceVendor: string;
+  targetVendor: string;
+  direction: "CANONICAL_TO_VENDOR" | "VENDOR_TO_CANONICAL";
+  deterministicBaseline: { fieldMappings: number; constants: number; warnings: string[] };
+  aiSuggestion?: CanonicalMappingSuggestResponse["aiSuggestion"];
+  comparison?: { unchanged: unknown[]; added: unknown[]; changed: unknown[] };
+  notes?: string[];
+}
+
+/** Mapping proposal package (review artifact) */
+export interface MappingProposalPackage {
+  proposalId: string;
+  operationCode: string;
+  version: string;
+  sourceVendor: string;
+  targetVendor: string;
+  direction: string;
+  createdAt: string;
+  deterministicBaseline: { fieldMappings: number; constants: number; warnings: string[] };
+  aiSuggestion?: CanonicalMappingSuggestResponse["aiSuggestion"];
+  comparison?: { unchanged: unknown[]; added: unknown[]; changed: unknown[] };
+  reviewChecklist: string[];
+  promotionGuidance: string[];
+  notes: string[];
+}
+
+/** Mapping proposal response */
+export interface MappingProposalResponse {
+  valid: boolean;
+  proposalPackage: MappingProposalPackage | null;
+  markdown?: string;
+  json?: Record<string, unknown>;
+  notes: string[];
+}
+
+/** POST /v1/mappings/canonical/proposal-package */
+export async function generateCanonicalMappingProposalPackage(
+  payload: MappingProposalPackagePayload
+): Promise<MappingProposalResponse> {
+  const { data } = await adminApi.post<MappingProposalResponse>(
+    "/v1/mappings/canonical/proposal-package",
+    payload
+  );
+  return data;
+}
+
+/** POST /v1/mappings/canonical/proposal-package/markdown */
+export async function generateCanonicalMappingProposalMarkdown(
+  payload: MappingProposalPackagePayload
+): Promise<{ markdown: string; proposalId: string | null }> {
+  const { data } = await adminApi.post<{ markdown: string; proposalId: string | null }>(
+    "/v1/mappings/canonical/proposal-package/markdown",
+    payload
+  );
+  return data;
+}
+
+// --- Promotion Artifact (code-first, review-only) ---
+
+/** Promotion artifact payload - requires proposalPackage from proposal package flow */
+export interface MappingPromotionArtifactPayload {
+  proposalPackage: MappingProposalPackage;
+}
+
+/** Promotion artifact recommended changes */
+export interface MappingPromotionRecommendedChanges {
+  added: unknown[];
+  changed: unknown[];
+  unchanged: unknown[];
+}
+
+/** Promotion artifact (code-first review artifact, no apply) */
+export interface MappingPromotionArtifact {
+  proposalId: string;
+  operationCode: string;
+  version: string;
+  sourceVendor: string;
+  targetVendor: string;
+  direction: string;
+  targetDefinitionFile: string;
+  recommendedChanges: MappingPromotionRecommendedChanges;
+  reviewChecklist: string[];
+  testChecklist: string[];
+  notes: string[];
+}
+
+/** Promotion artifact response */
+export interface MappingPromotionResponse {
+  valid: boolean;
+  promotionArtifact: MappingPromotionArtifact | null;
+  pythonSnippet: string | null;
+  markdown: string | null;
+  notes: string[];
+}
+
+/** POST /v1/mappings/canonical/promotion-artifact */
+export async function generateCanonicalMappingPromotionArtifact(
+  payload: MappingPromotionArtifactPayload
+): Promise<MappingPromotionResponse> {
+  const { data } = await adminApi.post<MappingPromotionResponse>(
+    "/v1/mappings/canonical/promotion-artifact",
+    payload
+  );
+  return data;
+}
+
+/** POST /v1/mappings/canonical/promotion-artifact/markdown */
+export async function generateCanonicalMappingPromotionMarkdown(
+  payload: MappingPromotionArtifactPayload
+): Promise<{ markdown: string; proposalId: string | null }> {
+  const { data } = await adminApi.post<{ markdown: string; proposalId: string | null }>(
+    "/v1/mappings/canonical/promotion-artifact/markdown",
+    payload
+  );
+  return data;
+}
+
 // --- Sandbox (canonical-driven, mock-only) ---
 
 /** GET /v1/sandbox/canonical/operations */
@@ -632,6 +980,12 @@ export interface DebugReport {
   }>;
   normalizedArtifacts: Record<string, unknown>;
   notes: string[];
+  /** Optional AI enrichment (advisory only) */
+  aiSummary?: string | null;
+  remediationPlan?: Array<{ priority?: number; title?: string; reason?: string; action?: string }>;
+  prioritizedNextSteps?: string[];
+  aiWarnings?: string[];
+  modelInfo?: { provider?: string; modelId?: string; enhanced?: boolean; reason?: string };
 }
 
 /** POST /v1/ai/debug/request/analyze */
@@ -639,6 +993,7 @@ export async function analyzeDebugRequest(body: {
   operationCode: string;
   version?: string;
   payload: Record<string, unknown>;
+  enhanceWithAi?: boolean;
 }): Promise<DebugReport> {
   const { data } = await adminApi.post<DebugReport>(
     "/v1/ai/debug/request/analyze",
@@ -650,6 +1005,7 @@ export async function analyzeDebugRequest(body: {
 /** POST /v1/ai/debug/flow-draft/analyze */
 export async function analyzeDebugFlowDraft(body: {
   draft: Record<string, unknown>;
+  enhanceWithAi?: boolean;
 }): Promise<DebugReport> {
   const { data } = await adminApi.post<DebugReport>(
     "/v1/ai/debug/flow-draft/analyze",
@@ -661,6 +1017,7 @@ export async function analyzeDebugFlowDraft(body: {
 /** POST /v1/ai/debug/sandbox-result/analyze */
 export async function analyzeDebugSandboxResult(body: {
   result: Record<string, unknown>;
+  enhanceWithAi?: boolean;
 }): Promise<DebugReport> {
   const { data } = await adminApi.post<DebugReport>(
     "/v1/ai/debug/sandbox-result/analyze",
@@ -684,6 +1041,14 @@ export interface CanonicalRuntimePreflightPayload {
   };
 }
 
+/** Mapping summary (mapping-aware preflight/bridge) */
+export interface MappingSummary {
+  available: boolean;
+  direction?: string;
+  fieldMappings?: number;
+  warnings?: string[];
+}
+
 /** Runtime Preflight response */
 export interface CanonicalRuntimePreflightResponse {
   valid: boolean;
@@ -697,6 +1062,8 @@ export interface CanonicalRuntimePreflightResponse {
   executionPlan?: { mode: string; canExecute: boolean; nextStep?: string };
   errors?: Array<{ field: string; message: string }>;
   notes?: string[];
+  mappingSummary?: MappingSummary;
+  vendorRequestPreview?: Record<string, unknown>;
 }
 
 /** POST /v1/runtime/canonical/preflight */
@@ -742,6 +1109,9 @@ export interface CanonicalBridgeResponse {
   executeResult?: { statusCode?: number; body?: unknown; error?: string };
   errors?: Array<{ field: string; message: string }>;
   notes?: string[];
+  mappingSummary?: MappingSummary;
+  vendorRequestPreview?: Record<string, unknown>;
+  canonicalResponseEnvelope?: Record<string, unknown>;
 }
 
 /** POST /v1/runtime/canonical/execute */

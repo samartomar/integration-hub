@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -283,3 +283,117 @@ def test_flow_draft_version_alias_normalizes_to_1_0(_mock_auth: object) -> None:
     data = json.loads(result["body"])
     assert data["valid"] is True
     assert data["normalizedDraft"]["version"] == "1.0"
+
+
+# --- Flow runtime handoff ---
+
+
+def _flow_handoff_event(body: dict, path: str = "/v1/flow/runtime/handoff") -> dict:
+    """Build POST /v1/flow/runtime/handoff or /v1/flow/runtime/handoff/preflight event."""
+    return {
+        "path": path,
+        "rawPath": path,
+        "httpMethod": "POST",
+        "headers": {"content-type": "application/json"},
+        "body": json.dumps(body),
+        "queryStringParameters": {},
+        "pathParameters": {},
+        "requestContext": AUTH_REQUEST_CONTEXT,
+    }
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+@patch("registry_lambda.evaluate_policy", return_value=MagicMock(allow=True))
+def test_flow_handoff_success(_mock_policy: object, _mock_auth: object) -> None:
+    """POST /v1/flow/runtime/handoff builds canonical execution package."""
+    body = {
+        "draft": {
+            "name": "Eligibility Check Flow",
+            "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+            "version": "1.0",
+            "sourceVendor": "LH001",
+            "targetVendor": "LH002",
+            "trigger": {"type": "MANUAL"},
+            "mappingMode": "CANONICAL_FIRST",
+        },
+        "payload": {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"},
+    }
+    event = _flow_handoff_event(body)
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    data = json.loads(result["body"])
+    assert data["valid"] is True
+    assert data["flowName"] == "Eligibility Check Flow"
+    assert data["operationCode"] == "GET_VERIFY_MEMBER_ELIGIBILITY"
+    assert data["canonicalVersion"] == "1.0"
+    assert data["sourceVendor"] == "LH001"
+    assert data["targetVendor"] == "LH002"
+    pkg = data["canonicalExecutionPackage"]
+    assert pkg is not None
+    assert pkg["sourceVendor"] == "LH001"
+    assert pkg["targetVendor"] == "LH002"
+    env = pkg["envelope"]
+    assert env["operationCode"] == "GET_VERIFY_MEMBER_ELIGIBILITY"
+    assert env["direction"] == "REQUEST"
+    assert env["payload"] == {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"}
+    assert "preflight" not in data
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+@patch("registry_lambda.evaluate_policy", return_value=MagicMock(allow=True))
+def test_flow_handoff_preflight_success(_mock_policy: object, _mock_auth: object) -> None:
+    """POST /v1/flow/runtime/handoff/preflight includes preflight result."""
+    body = {
+        "draft": {
+            "name": "Eligibility Check Flow",
+            "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+            "version": "1.0",
+            "sourceVendor": "LH001",
+            "targetVendor": "LH002",
+            "trigger": {"type": "MANUAL"},
+            "mappingMode": "CANONICAL_FIRST",
+        },
+    }
+    event = _flow_handoff_event(body, "/v1/flow/runtime/handoff/preflight")
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    data = json.loads(result["body"])
+    assert data["valid"] is True
+    assert "preflight" in data
+    preflight = data["preflight"]
+    assert "valid" in preflight
+    assert "checks" in preflight or "status" in preflight
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+@patch("registry_lambda.evaluate_policy", return_value=MagicMock(allow=True))
+def test_flow_handoff_malformed_json_returns_400(_mock_policy: object, _mock_auth: object) -> None:
+    """Malformed JSON body returns 400 INVALID_JSON."""
+    event = _flow_handoff_event({"draft": "invalid"}, "/v1/flow/runtime/handoff")
+    event["body"] = "{ invalid json }"
+    result = handler(event, None)
+    assert result["statusCode"] == 400
+    body = json.loads(result["body"])
+    assert body.get("error", {}).get("code") == "INVALID_JSON"
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+@patch("registry_lambda.evaluate_policy", return_value=MagicMock(allow=True))
+def test_flow_handoff_invalid_draft_returns_400(_mock_policy: object, _mock_auth: object) -> None:
+    """Invalid draft returns 400 VALIDATION_ERROR."""
+    body = {
+        "draft": {
+            "name": "Test",
+            "operationCode": "UNKNOWN_OP_XYZ",
+            "version": "1.0",
+            "sourceVendor": "LH001",
+            "targetVendor": "LH002",
+            "trigger": {"type": "MANUAL"},
+            "mappingMode": "CANONICAL_FIRST",
+        },
+    }
+    event = _flow_handoff_event(body)
+    result = handler(event, None)
+    assert result["statusCode"] == 400
+    body_resp = json.loads(result["body"])
+    assert body_resp.get("error", {}).get("code") == "VALIDATION_ERROR"

@@ -13,6 +13,7 @@ const primaryNavItems = [
   { path: "/admin/ai-debugger", label: "AI Debugger", featureCode: "registry_basic" },
   { path: "/admin/runtime-preflight", label: "Runtime Preflight", featureCode: "registry_basic" },
   { path: "/admin/canonical-execute", label: "Canonical Execute", featureCode: "registry_basic" },
+  { path: "/admin/canonical-mappings", label: "Canonical Mappings", featureCode: "registry_basic" },
   { path: "/ai", label: "AI", featureCode: "ai_formatter_ui" },
 ] as const;
 
@@ -35,6 +36,7 @@ function isPrimaryNavActive(pathname: string, label: string): boolean {
   if (label === "AI Debugger") return pathname.startsWith("/admin/ai-debugger");
   if (label === "Runtime Preflight") return pathname.startsWith("/admin/runtime-preflight");
   if (label === "Canonical Execute") return pathname.startsWith("/admin/canonical-execute");
+  if (label === "Canonical Mappings") return pathname.startsWith("/admin/canonical-mappings");
   if (label === "AI") return pathname.startsWith("/ai");
   return false;
 }
@@ -102,6 +104,7 @@ export function TopBar({ onSettingsClick, onFeaturesClick }: TopBarProps) {
     if (item.path === "/admin/ai-debugger") return featureRegistryBasic;
     if (item.path === "/admin/runtime-preflight") return featureRegistryBasic;
     if (item.path === "/admin/canonical-execute") return featureRegistryBasic;
+    if (item.path === "/admin/canonical-mappings") return featureRegistryBasic;
     if (item.path === "/ai") return featureAiFormatter;
     return true;
   });

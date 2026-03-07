@@ -18,6 +18,7 @@ import { SandboxPage } from "./pages/SandboxPage.tsx";
 import { AIDebuggerPage } from "./pages/AIDebuggerPage.tsx";
 import { RuntimePreflightPage } from "./pages/RuntimePreflightPage.tsx";
 import { CanonicalExecutePage } from "./pages/CanonicalExecutePage.tsx";
+import { CanonicalMappingPage } from "./pages/CanonicalMappingPage.tsx";
 import { FeatureRoute } from "./features/FeatureFlagContext.tsx";
 
 function LegacyTransactionRedirect() {
@@ -76,6 +77,7 @@ export const router = createBrowserRouter([
       { path: "/admin/ai-debugger", element: <FeatureRoute featureCode="registry_basic"><AIDebuggerPage /></FeatureRoute> },
       { path: "/admin/runtime-preflight", element: <FeatureRoute featureCode="registry_basic"><RuntimePreflightPage /></FeatureRoute> },
       { path: "/admin/canonical-execute", element: <FeatureRoute featureCode="registry_basic"><CanonicalExecutePage /></FeatureRoute> },
+      { path: "/admin/canonical-mappings", element: <FeatureRoute featureCode="registry_basic"><CanonicalMappingPage /></FeatureRoute> },
       { path: "/admin/approvals", element: <FeatureRoute featureCode="approvals"><Navigate to="/admin/registry?tab=access-requests" replace /></FeatureRoute> },
       {
         path: "/admin/registry/vendors/:vendorCode",

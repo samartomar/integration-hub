@@ -189,3 +189,23 @@ def test_post_ai_debug_request_analyze_malformed_json(_mock_auth: object) -> Non
     event["body"] = "not valid json{{{"
     result = handler(event, None)
     assert result["statusCode"] == 400
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_post_ai_debug_request_analyze_enhance_with_ai_returns_additive_fields(_mock_auth: object) -> None:
+    """enhanceWithAi=true returns deterministic report plus additive aiWarnings/modelInfo when invoke fails."""
+    event = _ai_debug_request_analyze_event({
+        "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+        "version": "1.0",
+        "payload": {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"},
+        "enhanceWithAi": True,
+    })
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert body["status"] == "PASS"
+    assert body["debugType"] == "CANONICAL_REQUEST"
+    # When AI Gateway invoke fails (no ARN in test env), fallback adds aiWarnings/modelInfo
+    assert "aiWarnings" in body
+    assert "modelInfo" in body
+    assert body["modelInfo"]["enhanced"] is False

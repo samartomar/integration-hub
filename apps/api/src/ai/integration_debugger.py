@@ -50,6 +50,8 @@ def analyze_canonical_request(
     operation_code: str,
     payload: dict[str, Any],
     version: str | None = None,
+    *,
+    enhance_with_ai: bool = False,
 ) -> dict[str, Any]:
     """Analyze canonical request payload. Returns structured debug report."""
     op_code = (operation_code or "").strip().upper()
@@ -132,7 +134,7 @@ def analyze_canonical_request(
     if status == "PASS" and not summary:
         summary = f"Request payload is valid for {op_code} {resolved}."
 
-    return build_debug_summary(
+    report = build_debug_summary(
         debug_type="CANONICAL_REQUEST",
         status=status,
         operation_code=op_code,
@@ -141,9 +143,10 @@ def analyze_canonical_request(
         findings=findings,
         normalized_artifacts={"payload": normalized_payload} if normalized_payload else {},
     )
+    return _maybe_enhance_with_ai(report, enhance_with_ai)
 
 
-def analyze_flow_draft(draft: dict[str, Any]) -> dict[str, Any]:
+def analyze_flow_draft(draft: dict[str, Any], *, enhance_with_ai: bool = False) -> dict[str, Any]:
     """Analyze flow draft. Returns structured debug report."""
     findings: list[dict[str, Any]] = []
     status = "PASS"
@@ -216,7 +219,7 @@ def analyze_flow_draft(draft: dict[str, Any]) -> dict[str, Any]:
         version = (draft.get("version") or "").strip()
         summary = f"Flow draft validation failed: {e.message}"
 
-    return build_debug_summary(
+    report = build_debug_summary(
         debug_type="FLOW_DRAFT",
         status=status,
         operation_code=normalized_draft.get("operationCode", "") if normalized_draft else (draft.get("operationCode") or ""),
@@ -225,9 +228,10 @@ def analyze_flow_draft(draft: dict[str, Any]) -> dict[str, Any]:
         findings=findings,
         normalized_artifacts={"draft": normalized_draft} if normalized_draft else {},
     )
+    return _maybe_enhance_with_ai(report, enhance_with_ai)
 
 
-def analyze_sandbox_result(result: dict[str, Any]) -> dict[str, Any]:
+def analyze_sandbox_result(result: dict[str, Any], *, enhance_with_ai: bool = False) -> dict[str, Any]:
     """Analyze sandbox result. Returns structured debug report."""
     findings: list[dict[str, Any]] = []
     status = "PASS"
@@ -305,7 +309,7 @@ def analyze_sandbox_result(result: dict[str, Any]) -> dict[str, Any]:
         if status == "PASS":
             summary = f"Sandbox result is valid for {op_code} {version}. Mock execution completed successfully."
 
-    return build_debug_summary(
+    report = build_debug_summary(
         debug_type="SANDBOX_RESULT",
         status=status,
         operation_code=op_code,
@@ -314,6 +318,35 @@ def analyze_sandbox_result(result: dict[str, Any]) -> dict[str, Any]:
         findings=findings,
         normalized_artifacts={"sandboxResult": result},
     )
+    return _maybe_enhance_with_ai(report, enhance_with_ai)
+
+
+def _maybe_enhance_with_ai(report: dict[str, Any], enhance_with_ai: bool) -> dict[str, Any]:
+    """
+    Optionally invoke AI Gateway for enrichment. Additive only; never mutates status/findings.
+    On failure: add fallback aiWarnings/modelInfo.
+    """
+    if not enhance_with_ai:
+        return report
+    try:
+        from ai.ai_gateway_invoker import invoke_debugger_enrich
+
+        enrichment = invoke_debugger_enrich(report)
+    except Exception:
+        enrichment = None
+    if enrichment is None:
+        report = dict(report)
+        report["aiWarnings"] = report.get("aiWarnings") or []
+        if not isinstance(report["aiWarnings"], list):
+            report["aiWarnings"] = []
+        report["aiWarnings"].append("AI enhancement unavailable; deterministic debugger result returned.")
+        report["modelInfo"] = {"provider": "bedrock", "enhanced": False, "reason": "invoke_failed"}
+        return report
+    out = dict(report)
+    for key in ("aiSummary", "remediationPlan", "prioritizedNextSteps", "aiWarnings", "modelInfo"):
+        if key in enrichment and enrichment[key] is not None:
+            out[key] = enrichment[key]
+    return out
 
 
 def build_debug_summary(

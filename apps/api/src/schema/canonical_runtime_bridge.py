@@ -139,9 +139,13 @@ def run_canonical_bridge(
     execute_request = build_execute_request_from_canonical(payload)
     execute_request_preview = execute_request if execute_request else {}
 
+    # Mapping-aware additive fields (from preflight)
+    mapping_summary = preflight.get("mappingSummary")
+    vendor_request_preview = preflight.get("vendorRequestPreview")
+
     # If preflight blocks, do not execute
     if not preflight_valid or preflight_status == "BLOCKED":
-        return {
+        out_blocked: dict[str, Any] = {
             "mode": mode,
             "valid": False,
             "status": "BLOCKED",
@@ -158,10 +162,15 @@ def run_canonical_bridge(
             },
             "notes": BRIDGE_NOTES,
         }
+        if mapping_summary is not None:
+            out_blocked["mappingSummary"] = mapping_summary
+        if vendor_request_preview is not None:
+            out_blocked["vendorRequestPreview"] = vendor_request_preview
+        return out_blocked
 
     # DRY_RUN: return preview only
     if mode == "DRY_RUN":
-        return {
+        out: dict[str, Any] = {
             "mode": mode,
             "valid": True,
             "status": "READY",
@@ -176,8 +185,13 @@ def run_canonical_bridge(
                 "canExecute": True,
                 "reason": "Preflight passed. Use EXECUTE mode to run via existing runtime path.",
             },
-            "notes": BRIDGE_NOTES,
+            "notes": list(BRIDGE_NOTES),
         }
+        if mapping_summary is not None:
+            out["mappingSummary"] = mapping_summary
+        if vendor_request_preview is not None:
+            out["vendorRequestPreview"] = vendor_request_preview
+        return out
 
     # EXECUTE: call existing execute path via executor
     if mode == "EXECUTE":
@@ -201,7 +215,11 @@ def run_canonical_bridge(
 
         try:
             execute_response = executor(execute_request_preview)
-            return {
+            summarized = _summarize_execute_response(execute_response)
+            notes = list(BRIDGE_NOTES)
+            notes.append("Bridge execution used deterministic canonical mapping.")
+            notes.append("Existing execute path remained the runtime executor.")
+            out_exec: dict[str, Any] = {
                 "mode": mode,
                 "valid": execute_response.get("statusCode", 500) < 400,
                 "status": "EXECUTED" if execute_response.get("statusCode", 500) < 400 else "FAILED",
@@ -212,9 +230,37 @@ def run_canonical_bridge(
                 "normalizedEnvelope": normalized_envelope,
                 "preflight": preflight,
                 "executeRequestPreview": execute_request_preview,
-                "executeResult": _summarize_execute_response(execute_response),
-                "notes": BRIDGE_NOTES,
+                "executeResult": summarized,
+                "notes": notes,
             }
+            if mapping_summary is not None:
+                out_exec["mappingSummary"] = mapping_summary
+            if vendor_request_preview is not None:
+                out_exec["vendorRequestPreview"] = vendor_request_preview
+            # Canonical response: use responseBody from execute path when present (already canonical),
+            # or try deterministic vendor->canonical transform when body is vendor-shaped
+            body = summarized.get("body")
+            if isinstance(body, dict):
+                if body.get("responseBody") is not None:
+                    out_exec["canonicalResponseEnvelope"] = body["responseBody"]
+                elif (
+                    mapping_summary
+                    and op_code
+                    and source
+                    and target
+                ):
+                    from schema.canonical_mapping_engine import transform_vendor_to_canonical
+
+                    canonical_resp, violations = transform_vendor_to_canonical(
+                        op_code, body, source, target, canonical_version
+                    )
+                    if not violations and canonical_resp:
+                        out_exec["canonicalResponseEnvelope"] = canonical_resp
+                    else:
+                        notes.append(
+                            "Canonical response mapping was not applied (vendor response structure unsupported or incomplete)."
+                        )
+            return out_exec
         except Exception as e:
             return {
                 "mode": mode,

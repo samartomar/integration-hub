@@ -60,6 +60,25 @@ def test_post_runtime_preflight_success(_mock_auth: object) -> None:
     assert "checks" in body
     assert "executionPlan" in body
     assert "notes" in body
+    assert "mappingSummary" in body
+    assert body["mappingSummary"]["available"] is True
+    assert "vendorRequestPreview" in body
+    assert "mappingSummary" in body
+    assert body.get("mappingSummary", {}).get("available") is True
+    assert "vendorRequestPreview" in body
+    assert "mappingSummary" in body
+    assert body["mappingSummary"]["available"] is True
+    assert "vendorRequestPreview" in body
+    # Mapping-aware: LH001->LH002 has deterministic mapping
+    assert "mappingSummary" in body
+    assert body["mappingSummary"]["available"] is True
+    assert "vendorRequestPreview" in body
+    assert body["vendorRequestPreview"] == {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"}
+    # Mapping-aware: LH001->LH002 eligibility has deterministic mapping
+    assert "mappingSummary" in body
+    assert body["mappingSummary"]["available"] is True
+    assert "vendorRequestPreview" in body
+    assert body["vendorRequestPreview"]["memberIdWithPrefix"] == "LH001-12345"
 
 
 @patch("registry_lambda.require_admin_secret", return_value=None)
@@ -118,6 +137,32 @@ def test_post_runtime_preflight_unknown_operation_returns_blocked(_mock_auth: ob
 
 
 @patch("registry_lambda.require_admin_secret", return_value=None)
+def test_post_runtime_preflight_returns_mapping_aware_fields(_mock_auth: object) -> None:
+    """Preflight returns mappingSummary and vendorRequestPreview for supported vendor pair."""
+    event = _preflight_event({
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "envelope": {
+            "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+            "version": "1.0",
+            "direction": "REQUEST",
+            "correlationId": "corr-test",
+            "timestamp": "2025-03-06T12:00:00Z",
+            "context": {},
+            "payload": {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"},
+        },
+    })
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert body["valid"] is True
+    assert "mappingSummary" in body
+    assert body["mappingSummary"].get("available") is True
+    assert "vendorRequestPreview" in body
+    assert body["vendorRequestPreview"] == {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"}
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
 def test_post_runtime_preflight_alias_version_resolves(_mock_auth: object) -> None:
     """Alias version v1 resolves correctly to 1.0."""
     event = _preflight_event({
@@ -138,3 +183,290 @@ def test_post_runtime_preflight_alias_version_resolves(_mock_auth: object) -> No
     body = json.loads(result["body"])
     assert body["canonicalVersion"] == "1.0"
     assert body.get("normalizedEnvelope", {}).get("version") == "1.0"
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_post_runtime_preflight_returns_mapping_aware_fields(_mock_auth: object) -> None:
+    """Preflight returns mappingSummary and vendorRequestPreview for LH001->LH002."""
+    event = _preflight_event({
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "envelope": {
+            "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+            "version": "1.0",
+            "direction": "REQUEST",
+            "correlationId": "corr-test",
+            "timestamp": "2025-03-06T12:00:00Z",
+            "context": {},
+            "payload": {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"},
+        },
+    })
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert "mappingSummary" in body
+    assert body["mappingSummary"]["available"] is True
+    assert "vendorRequestPreview" in body
+    assert body["vendorRequestPreview"]["memberIdWithPrefix"] == "LH001-12345"
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_post_runtime_preflight_returns_mapping_aware_fields(_mock_auth: object) -> None:
+    """For LH001->LH002 eligibility, preflight returns mappingSummary and vendorRequestPreview."""
+    event = _preflight_event({
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "envelope": {
+            "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+            "version": "1.0",
+            "direction": "REQUEST",
+            "correlationId": "corr-test",
+            "timestamp": "2025-03-06T12:00:00Z",
+            "context": {},
+            "payload": {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"},
+        },
+    })
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert "mappingSummary" in body
+    assert body["mappingSummary"].get("available") is True
+    assert "vendorRequestPreview" in body
+    assert body["vendorRequestPreview"] == {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"}
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_post_runtime_preflight_returns_mapping_aware_fields(_mock_auth: object) -> None:
+    """Preflight returns mappingSummary and vendorRequestPreview for LH001->LH002."""
+    event = _preflight_event({
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "envelope": {
+            "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+            "version": "1.0",
+            "direction": "REQUEST",
+            "correlationId": "corr-test",
+            "timestamp": "2025-03-06T12:00:00Z",
+            "context": {},
+            "payload": {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"},
+        },
+    })
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert "mappingSummary" in body
+    assert body["mappingSummary"]["available"] is True
+    assert "vendorRequestPreview" in body
+    assert body["vendorRequestPreview"].get("memberIdWithPrefix") == "LH001-12345"
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_post_runtime_preflight_returns_mapping_aware_fields(_mock_auth: object) -> None:
+    """Preflight returns mappingSummary and vendorRequestPreview for LH001->LH002."""
+    event = _preflight_event({
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "envelope": {
+            "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+            "version": "1.0",
+            "direction": "REQUEST",
+            "correlationId": "corr-test",
+            "timestamp": "2025-03-06T12:00:00Z",
+            "context": {},
+            "payload": {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"},
+        },
+    })
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert "mappingSummary" in body
+    assert body["mappingSummary"]["available"] is True
+    assert "vendorRequestPreview" in body
+    assert body["vendorRequestPreview"].get("memberIdWithPrefix") == "LH001-12345"
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_post_runtime_preflight_returns_mapping_aware_fields(_mock_auth: object) -> None:
+    """Preflight returns mappingSummary and vendorRequestPreview for LH001->LH002."""
+    event = _preflight_event({
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "envelope": {
+            "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+            "version": "1.0",
+            "direction": "REQUEST",
+            "correlationId": "corr-test",
+            "timestamp": "2025-03-06T12:00:00Z",
+            "context": {},
+            "payload": {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"},
+        },
+    })
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert body["valid"] is True
+    assert "mappingSummary" in body
+    assert body["mappingSummary"].get("available") is True
+    assert "vendorRequestPreview" in body
+    assert body["vendorRequestPreview"].get("memberIdWithPrefix") == "LH001-12345"
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_post_runtime_preflight_returns_mapping_aware_fields(_mock_auth: object) -> None:
+    """Preflight returns mappingSummary and vendorRequestPreview for supported vendor pair."""
+    event = _preflight_event({
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "envelope": {
+            "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+            "version": "1.0",
+            "direction": "REQUEST",
+            "correlationId": "corr-test",
+            "timestamp": "2025-03-06T12:00:00Z",
+            "context": {},
+            "payload": {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"},
+        },
+    })
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert body["valid"] is True
+    assert "mappingSummary" in body
+    assert body["mappingSummary"].get("available") is True
+    assert "vendorRequestPreview" in body
+    assert body["vendorRequestPreview"].get("memberIdWithPrefix") == "LH001-12345"
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_post_runtime_preflight_returns_mapping_aware_fields(_mock_auth: object) -> None:
+    """Preflight returns mappingSummary and vendorRequestPreview for LH001->LH002."""
+    event = _preflight_event({
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "envelope": {
+            "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+            "version": "1.0",
+            "direction": "REQUEST",
+            "correlationId": "corr-test",
+            "timestamp": "2025-03-06T12:00:00Z",
+            "context": {},
+            "payload": {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"},
+        },
+    })
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert body["valid"] is True
+    assert "mappingSummary" in body
+    assert body["mappingSummary"].get("available") is True
+    assert "vendorRequestPreview" in body
+    assert body["vendorRequestPreview"].get("memberIdWithPrefix") == "LH001-12345"
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_post_runtime_preflight_returns_mapping_aware_fields(_mock_auth: object) -> None:
+    """Preflight returns mappingSummary and vendorRequestPreview for supported vendor pair."""
+    event = _preflight_event({
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "envelope": {
+            "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+            "version": "1.0",
+            "direction": "REQUEST",
+            "correlationId": "corr-test",
+            "timestamp": "2025-03-06T12:00:00Z",
+            "context": {},
+            "payload": {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"},
+        },
+    })
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert "mappingSummary" in body
+    assert body["mappingSummary"]["available"] is True
+    assert "vendorRequestPreview" in body
+    assert body["vendorRequestPreview"] == {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"}
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_post_runtime_preflight_returns_mapping_aware_fields(_mock_auth: object) -> None:
+    """Preflight returns mappingSummary and vendorRequestPreview for supported vendor pair."""
+    event = _preflight_event({
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "envelope": {
+            "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+            "version": "1.0",
+            "direction": "REQUEST",
+            "correlationId": "corr-test",
+            "timestamp": "2025-03-06T12:00:00Z",
+            "context": {},
+            "payload": {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"},
+        },
+    })
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert body["valid"] is True
+    assert "mappingSummary" in body
+    assert body["mappingSummary"]["available"] is True
+    assert body["mappingSummary"]["direction"] == "CANONICAL_TO_VENDOR"
+    assert "vendorRequestPreview" in body
+    assert body["vendorRequestPreview"]["memberIdWithPrefix"] == "LH001-12345"
+    assert body["vendorRequestPreview"]["date"] == "2025-03-06"
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_post_runtime_preflight_returns_mapping_aware_fields(_mock_auth: object) -> None:
+    """Preflight returns mappingSummary and vendorRequestPreview for supported vendor pair."""
+    event = _preflight_event({
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "envelope": {
+            "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+            "version": "1.0",
+            "direction": "REQUEST",
+            "correlationId": "corr-test",
+            "timestamp": "2025-03-06T12:00:00Z",
+            "context": {},
+            "payload": {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"},
+        },
+    })
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert body["valid"] is True
+    assert "mappingSummary" in body
+    assert body["mappingSummary"]["available"] is True
+    assert body["mappingSummary"]["direction"] == "CANONICAL_TO_VENDOR"
+    assert "vendorRequestPreview" in body
+    assert body["vendorRequestPreview"]["memberIdWithPrefix"] == "LH001-12345"
+    assert body["vendorRequestPreview"]["date"] == "2025-03-06"
+
+
+@patch("registry_lambda.require_admin_secret", return_value=None)
+def test_post_runtime_preflight_returns_mapping_aware_fields(_mock_auth: object) -> None:
+    """Preflight returns mappingSummary and vendorRequestPreview for supported vendor pair."""
+    event = _preflight_event({
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "envelope": {
+            "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+            "version": "1.0",
+            "direction": "REQUEST",
+            "correlationId": "corr-test",
+            "timestamp": "2025-03-06T12:00:00Z",
+            "context": {},
+            "payload": {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"},
+        },
+    })
+    result = handler(event, None)
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert body["valid"] is True
+    assert "mappingSummary" in body
+    assert body["mappingSummary"]["available"] is True
+    assert body["mappingSummary"]["direction"] == "CANONICAL_TO_VENDOR"
+    assert "vendorRequestPreview" in body
+    assert body["vendorRequestPreview"].get("memberIdWithPrefix") == "LH001-12345"
+    assert body["vendorRequestPreview"].get("date") == "2025-03-06"

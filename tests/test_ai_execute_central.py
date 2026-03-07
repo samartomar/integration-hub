@@ -721,3 +721,45 @@ def test_data_jwt_claim_source_vendor_overrides_body(
     }
     resp = handler(event, None)
     assert resp["statusCode"] == 403
+
+
+# --- Internal debugger enrichment (Lambda-to-Lambda invoke) ---
+
+
+@patch("ai.bedrock_debugger_enricher.enrich_debug_report_with_bedrock")
+def test_internal_debugger_enrich_returns_enrichment(mock_enrich: MagicMock) -> None:
+    """Internal event action=debugger_enrich returns enrichment dict (no HTTP envelope)."""
+    mock_enrich.return_value = {
+        "aiSummary": "Fix the date format.",
+        "remediationPlan": [{"priority": 1, "title": "Fix date", "reason": "Invalid", "action": "Use YYYY-MM-DD"}],
+        "prioritizedNextSteps": ["Fix date"],
+        "aiWarnings": ["Advisory only"],
+        "modelInfo": {"provider": "bedrock", "modelId": "x", "enhanced": True},
+    }
+    event = {
+        "action": "debugger_enrich",
+        "report": {
+            "debugType": "CANONICAL_REQUEST",
+            "status": "FAIL",
+            "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+            "version": "1.0",
+            "summary": "Validation failed",
+            "findings": [],
+            "notes": [],
+        },
+    }
+    result = handler(event, None)
+    assert isinstance(result, dict)
+    assert "aiSummary" in result
+    assert result["aiSummary"] == "Fix the date format."
+    assert result["modelInfo"]["enhanced"] is True
+    mock_enrich.assert_called_once()
+
+
+def test_internal_debugger_enrich_invalid_report_returns_fallback() -> None:
+    """Internal event with invalid report returns fallback enrichment."""
+    event = {"action": "debugger_enrich", "report": "not-a-dict"}
+    result = handler(event, None)
+    assert isinstance(result, dict)
+    assert "aiWarnings" in result
+    assert result["modelInfo"]["enhanced"] is False

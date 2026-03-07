@@ -135,3 +135,720 @@ def test_validate_bridge_request_requires_mode() -> None:
         "envelope": _eligibility_envelope(),
     })
     assert any("mode" in (e.get("field") or "") for e in errors)
+
+
+def test_dry_run_includes_vendor_request_preview() -> None:
+    """DRY_RUN for mapped vendor pair includes mappingSummary and vendorRequestPreview."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "DRY_RUN",
+        "envelope": _eligibility_envelope(),
+    }
+    result = run_canonical_bridge(payload)
+    assert result["mode"] == "DRY_RUN"
+    assert result["valid"] is True
+    assert "mappingSummary" in result
+    assert result["mappingSummary"].get("available") is True
+    assert "vendorRequestPreview" in result
+    assert result["vendorRequestPreview"] == {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"}
+
+
+def test_execute_with_response_body_sets_canonical_response_envelope() -> None:
+    """EXECUTE when executor returns body.responseBody sets canonicalResponseEnvelope."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "EXECUTE",
+        "envelope": _eligibility_envelope(),
+    }
+    exec_response = {
+        "statusCode": 200,
+        "body": '{"transactionId":"tx-1","responseBody":{"memberIdWithPrefix":"LH001-12345","name":"Jane","status":"eligible"}}',
+    }
+
+    def mock_executor(req: dict) -> dict:
+        return exec_response
+
+    result = run_canonical_bridge(payload, executor=mock_executor)
+    assert result["status"] == "EXECUTED"
+    assert "canonicalResponseEnvelope" in result
+    assert result["canonicalResponseEnvelope"]["memberIdWithPrefix"] == "LH001-12345"
+    assert result["canonicalResponseEnvelope"]["name"] == "Jane"
+
+
+def test_execute_without_response_body_no_canonical_envelope() -> None:
+    """EXECUTE when body has no responseBody does not set canonicalResponseEnvelope."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "EXECUTE",
+        "envelope": _eligibility_envelope(),
+    }
+
+    def mock_executor(req: dict) -> dict:
+        return {"statusCode": 200, "body": '{"transactionId":"tx-1"}'}
+
+    result = run_canonical_bridge(payload, executor=mock_executor)
+    assert result["status"] == "EXECUTED"
+    assert result.get("canonicalResponseEnvelope") is None
+
+
+def test_dry_run_includes_vendor_request_preview() -> None:
+    """DRY_RUN includes mappingSummary and vendorRequestPreview for mapped vendor pair."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "DRY_RUN",
+        "envelope": _eligibility_envelope(),
+    }
+    result = run_canonical_bridge(payload)
+    assert result["mode"] == "DRY_RUN"
+    assert result["valid"] is True
+    assert "mappingSummary" in result
+    assert result["mappingSummary"].get("available") is True
+    assert "vendorRequestPreview" in result
+    assert result["vendorRequestPreview"].get("memberIdWithPrefix") == "LH001-12345"
+
+
+def test_execute_with_response_body_sets_canonical_response_envelope() -> None:
+    """When executor returns body with responseBody, bridge sets canonicalResponseEnvelope."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "EXECUTE",
+        "envelope": _eligibility_envelope(),
+    }
+    mock_body = {
+        "transactionId": "tx-123",
+        "responseBody": {"memberIdWithPrefix": "LH001-12345", "name": "Jane", "status": "eligible"},
+    }
+
+    def mock_executor(req: dict) -> dict:
+        return {"statusCode": 200, "body": mock_body}
+
+    result = run_canonical_bridge(payload, executor=mock_executor)
+    assert result["status"] == "EXECUTED"
+    assert "canonicalResponseEnvelope" in result
+    assert result["canonicalResponseEnvelope"] == mock_body["responseBody"]
+
+
+def test_execute_without_response_body_no_canonical_envelope() -> None:
+    """When body has no responseBody, canonicalResponseEnvelope is not set."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "EXECUTE",
+        "envelope": _eligibility_envelope(),
+    }
+
+    def mock_executor(req: dict) -> dict:
+        return {"statusCode": 200, "body": {"transactionId": "tx-123", "status": "completed"}}
+
+    result = run_canonical_bridge(payload, executor=mock_executor)
+    assert result["status"] == "EXECUTED"
+    assert "canonicalResponseEnvelope" not in result or result.get("canonicalResponseEnvelope") is None
+
+
+def test_dry_run_includes_vendor_request_preview() -> None:
+    """DRY_RUN for mapped vendor pair includes mappingSummary and vendorRequestPreview."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "DRY_RUN",
+        "envelope": _eligibility_envelope(),
+    }
+    result = run_canonical_bridge(payload)
+    assert result["mode"] == "DRY_RUN"
+    assert result["valid"] is True
+    assert "mappingSummary" in result
+    assert result["mappingSummary"].get("available") is True
+    assert "vendorRequestPreview" in result
+    assert result["vendorRequestPreview"] == {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"}
+
+
+def test_execute_with_response_body_sets_canonical_response_envelope() -> None:
+    """When executor returns body with responseBody, bridge sets canonicalResponseEnvelope."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "EXECUTE",
+        "envelope": _eligibility_envelope(),
+    }
+    mock_response = {
+        "statusCode": 200,
+        "body": '{"transactionId":"tx-1","responseBody":{"memberIdWithPrefix":"LH001-12345","name":"Jane","dob":"1990-01-01"}}',
+    }
+
+    def mock_executor(req: dict) -> dict:
+        return mock_response
+
+    result = run_canonical_bridge(payload, executor=mock_executor)
+    assert result["status"] == "EXECUTED"
+    assert "canonicalResponseEnvelope" in result
+    assert result["canonicalResponseEnvelope"].get("memberIdWithPrefix") == "LH001-12345"
+    assert result["canonicalResponseEnvelope"].get("name") == "Jane"
+
+
+def test_execute_without_response_body_no_canonical_envelope() -> None:
+    """When body has no responseBody, canonicalResponseEnvelope is not set."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "EXECUTE",
+        "envelope": _eligibility_envelope(),
+    }
+
+    def mock_executor(req: dict) -> dict:
+        return {"statusCode": 200, "body": '{"transactionId":"tx-1","status":"completed"}'}
+
+    result = run_canonical_bridge(payload, executor=mock_executor)
+    assert result["status"] == "EXECUTED"
+    assert "canonicalResponseEnvelope" not in result or result.get("canonicalResponseEnvelope") is None
+
+
+def test_dry_run_includes_vendor_request_preview() -> None:
+    """DRY_RUN includes mappingSummary and vendorRequestPreview for mapped vendor pair."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "DRY_RUN",
+        "envelope": _eligibility_envelope(),
+    }
+    result = run_canonical_bridge(payload)
+    assert result["mode"] == "DRY_RUN"
+    assert result["valid"] is True
+    assert "mappingSummary" in result
+    assert result["mappingSummary"].get("available") is True
+    assert "vendorRequestPreview" in result
+    assert result["vendorRequestPreview"] == {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"}
+
+
+def test_execute_with_response_body_sets_canonical_response_envelope() -> None:
+    """When executor returns body with responseBody, bridge sets canonicalResponseEnvelope."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "EXECUTE",
+        "envelope": _eligibility_envelope(),
+    }
+    canonical_resp = {"memberIdWithPrefix": "LH001-12345", "name": "Jane", "status": "eligible"}
+
+    def mock_executor(req: dict) -> dict:
+        return {
+            "statusCode": 200,
+            "body": '{"transactionId":"tx-1","responseBody":' + __import__("json").dumps(canonical_resp) + "}",
+        }
+
+    result = run_canonical_bridge(payload, executor=mock_executor)
+    assert result["status"] == "EXECUTED"
+    assert "canonicalResponseEnvelope" in result
+    assert result["canonicalResponseEnvelope"] == canonical_resp
+
+
+def test_execute_without_response_body_no_canonical_envelope() -> None:
+    """When body has no responseBody, canonicalResponseEnvelope is not set."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "EXECUTE",
+        "envelope": _eligibility_envelope(),
+    }
+
+    def mock_executor(req: dict) -> dict:
+        return {"statusCode": 200, "body": '{"transactionId":"tx-1","status":"completed"}'}
+
+    result = run_canonical_bridge(payload, executor=mock_executor)
+    assert result["status"] == "EXECUTED"
+    assert result.get("canonicalResponseEnvelope") is None
+
+
+def test_dry_run_includes_vendor_request_preview() -> None:
+    """DRY_RUN includes mappingSummary and vendorRequestPreview for mapped vendor pair."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "DRY_RUN",
+        "envelope": _eligibility_envelope(),
+    }
+    result = run_canonical_bridge(payload)
+    assert result["mode"] == "DRY_RUN"
+    assert result["valid"] is True
+    assert "mappingSummary" in result
+    assert result["mappingSummary"]["available"] is True
+    assert "vendorRequestPreview" in result
+    assert result["vendorRequestPreview"] == {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"}
+
+
+def test_execute_with_response_body_sets_canonical_response_envelope() -> None:
+    """When executor returns body with responseBody, bridge sets canonicalResponseEnvelope."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "EXECUTE",
+        "envelope": _eligibility_envelope(),
+    }
+    mock_body = {
+        "transactionId": "tx-123",
+        "correlationId": "corr-test",
+        "status": "completed",
+        "responseBody": {"memberIdWithPrefix": "LH001-12345", "name": "Jane", "status": "eligible"},
+    }
+
+    def mock_executor(req: dict) -> dict:
+        return {"statusCode": 200, "body": __import__("json").dumps(mock_body)}
+
+    result = run_canonical_bridge(payload, executor=mock_executor)
+    assert result["status"] == "EXECUTED"
+    assert "canonicalResponseEnvelope" in result
+    assert result["canonicalResponseEnvelope"] == mock_body["responseBody"]
+
+
+def test_execute_without_response_body_no_canonical_envelope() -> None:
+    """When body has no responseBody, canonicalResponseEnvelope is not set."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "EXECUTE",
+        "envelope": _eligibility_envelope(),
+    }
+
+    def mock_executor(req: dict) -> dict:
+        return {"statusCode": 200, "body": '{"transactionId":"tx-123","status":"completed"}'}
+
+    result = run_canonical_bridge(payload, executor=mock_executor)
+    assert result["status"] == "EXECUTED"
+    assert result.get("canonicalResponseEnvelope") is None
+
+
+def test_dry_run_includes_vendor_request_preview() -> None:
+    """DRY_RUN includes mappingSummary and vendorRequestPreview for mapped vendor pair."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "DRY_RUN",
+        "envelope": _eligibility_envelope(),
+    }
+    result = run_canonical_bridge(payload)
+    assert result["mode"] == "DRY_RUN"
+    assert result["valid"] is True
+    assert "mappingSummary" in result
+    assert result["mappingSummary"].get("available") is True
+    assert "vendorRequestPreview" in result
+    assert result["vendorRequestPreview"] == {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"}
+
+
+def test_execute_with_response_body_sets_canonical_response_envelope() -> None:
+    """When executor returns body with responseBody, bridge sets canonicalResponseEnvelope."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "EXECUTE",
+        "envelope": _eligibility_envelope(),
+    }
+    mock_body = {
+        "transactionId": "tx-123",
+        "correlationId": "corr-test",
+        "status": "completed",
+        "responseBody": {"memberIdWithPrefix": "LH001-12345", "name": "Jane", "status": "eligible"},
+    }
+
+    def mock_executor(req: dict) -> dict:
+        return {"statusCode": 200, "body": mock_body}
+
+    result = run_canonical_bridge(payload, executor=mock_executor)
+    assert result["status"] == "EXECUTED"
+    assert "canonicalResponseEnvelope" in result
+    assert result["canonicalResponseEnvelope"] == mock_body["responseBody"]
+
+
+def test_execute_without_response_body_no_canonical_envelope() -> None:
+    """When body has no responseBody, canonicalResponseEnvelope is not set."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "EXECUTE",
+        "envelope": _eligibility_envelope(),
+    }
+
+    def mock_executor(req: dict) -> dict:
+        return {"statusCode": 200, "body": {"transactionId": "tx-123", "status": "completed"}}
+
+    result = run_canonical_bridge(payload, executor=mock_executor)
+    assert result["status"] == "EXECUTED"
+    assert result.get("canonicalResponseEnvelope") is None
+
+
+def test_dry_run_includes_mapped_vendor_request_preview() -> None:
+    """DRY_RUN includes mappingSummary and vendorRequestPreview for LH001->LH002."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "DRY_RUN",
+        "envelope": _eligibility_envelope(),
+    }
+    result = run_canonical_bridge(payload)
+    assert result["mode"] == "DRY_RUN"
+    assert result["valid"] is True
+    assert "mappingSummary" in result
+    assert result["mappingSummary"].get("available") is True
+    assert "vendorRequestPreview" in result
+    assert result["vendorRequestPreview"] == {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"}
+
+
+def test_execute_with_response_body_sets_canonical_response_envelope() -> None:
+    """When executor returns body with responseBody, bridge sets canonicalResponseEnvelope."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "EXECUTE",
+        "envelope": _eligibility_envelope(),
+    }
+    exec_body = {
+        "transactionId": "tx-123",
+        "status": "completed",
+        "responseBody": {"memberIdWithPrefix": "LH001-12345", "name": "Jane", "status": "eligible"},
+    }
+
+    def mock_executor(req: dict) -> dict:
+        return {"statusCode": 200, "body": exec_body}
+
+    result = run_canonical_bridge(payload, executor=mock_executor)
+    assert result["status"] == "EXECUTED"
+    assert "canonicalResponseEnvelope" in result
+    assert result["canonicalResponseEnvelope"] == exec_body["responseBody"]
+
+
+def test_execute_without_response_body_no_canonical_envelope() -> None:
+    """When body has no responseBody, canonicalResponseEnvelope is not set."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "EXECUTE",
+        "envelope": _eligibility_envelope(),
+    }
+
+    def mock_executor(req: dict) -> dict:
+        return {"statusCode": 200, "body": {"transactionId": "tx-123", "status": "completed"}}
+
+    result = run_canonical_bridge(payload, executor=mock_executor)
+    assert result["status"] == "EXECUTED"
+    assert "canonicalResponseEnvelope" not in result or result.get("canonicalResponseEnvelope") is None
+
+
+def test_dry_run_includes_mapped_vendor_request_preview() -> None:
+    """DRY_RUN includes mappingSummary and vendorRequestPreview for mapped vendor pair."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "DRY_RUN",
+        "envelope": _eligibility_envelope(),
+    }
+    result = run_canonical_bridge(payload)
+    assert result["mode"] == "DRY_RUN"
+    assert result["valid"] is True
+    assert "mappingSummary" in result
+    assert result["mappingSummary"].get("available") is True
+    assert "vendorRequestPreview" in result
+    assert result["vendorRequestPreview"] == {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"}
+
+
+def test_execute_with_response_body_sets_canonical_response_envelope() -> None:
+    """When executor returns body with responseBody, bridge sets canonicalResponseEnvelope."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "EXECUTE",
+        "envelope": _eligibility_envelope(),
+    }
+    mock_body = {
+        "transactionId": "tx-123",
+        "correlationId": "corr-test",
+        "status": "completed",
+        "responseBody": {"memberIdWithPrefix": "LH001-12345", "name": "Jane", "status": "eligible"},
+    }
+
+    def mock_executor(req: dict) -> dict:
+        return {"statusCode": 200, "body": mock_body}
+
+    result = run_canonical_bridge(payload, executor=mock_executor)
+    assert result["status"] == "EXECUTED"
+    assert "canonicalResponseEnvelope" in result
+    assert result["canonicalResponseEnvelope"] == mock_body["responseBody"]
+
+
+def test_execute_without_response_body_no_canonical_envelope() -> None:
+    """When body has no responseBody, canonicalResponseEnvelope is not set."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "EXECUTE",
+        "envelope": _eligibility_envelope(),
+    }
+
+    def mock_executor(req: dict) -> dict:
+        return {"statusCode": 200, "body": {"transactionId": "tx-123", "status": "completed"}}
+
+    result = run_canonical_bridge(payload, executor=mock_executor)
+    assert result["status"] == "EXECUTED"
+    assert result.get("canonicalResponseEnvelope") is None
+
+
+def test_dry_run_includes_vendor_request_preview() -> None:
+    """DRY_RUN includes mappingSummary and vendorRequestPreview when mapping exists."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "DRY_RUN",
+        "envelope": _eligibility_envelope(),
+    }
+    result = run_canonical_bridge(payload)
+    assert result["mode"] == "DRY_RUN"
+    assert result["valid"] is True
+    assert "mappingSummary" in result
+    assert result["mappingSummary"].get("available") is True
+    assert "vendorRequestPreview" in result
+    assert result["vendorRequestPreview"] == {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"}
+
+
+def test_execute_with_response_body_sets_canonical_response_envelope() -> None:
+    """When execute returns responseBody, bridge sets canonicalResponseEnvelope."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "EXECUTE",
+        "envelope": _eligibility_envelope(),
+    }
+    mock_body = {
+        "transactionId": "tx-123",
+        "correlationId": "corr-test",
+        "status": "completed",
+        "responseBody": {"memberIdWithPrefix": "LH001-12345", "name": "Jane", "status": "eligible"},
+    }
+
+    def mock_executor(req: dict) -> dict:
+        return {"statusCode": 200, "body": mock_body}
+
+    result = run_canonical_bridge(payload, executor=mock_executor)
+    assert result["status"] == "EXECUTED"
+    assert "canonicalResponseEnvelope" in result
+    assert result["canonicalResponseEnvelope"] == {"memberIdWithPrefix": "LH001-12345", "name": "Jane", "status": "eligible"}
+
+
+def test_execute_without_response_body_no_canonical_envelope() -> None:
+    """When execute body has no responseBody, canonicalResponseEnvelope is not set."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "EXECUTE",
+        "envelope": _eligibility_envelope(),
+    }
+
+    def mock_executor(req: dict) -> dict:
+        return {"statusCode": 200, "body": {"transactionId": "tx-123", "status": "completed"}}
+
+    result = run_canonical_bridge(payload, executor=mock_executor)
+    assert result["status"] == "EXECUTED"
+    assert result.get("canonicalResponseEnvelope") is None
+
+
+def test_dry_run_includes_vendor_request_preview() -> None:
+    """DRY_RUN includes mappingSummary and vendorRequestPreview when mapping exists."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "DRY_RUN",
+        "envelope": _eligibility_envelope(),
+    }
+    result = run_canonical_bridge(payload)
+    assert result["mode"] == "DRY_RUN"
+    assert result["valid"] is True
+    assert "mappingSummary" in result
+    assert result["mappingSummary"].get("available") is True
+    assert "vendorRequestPreview" in result
+    assert result["vendorRequestPreview"] == {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"}
+
+
+def test_execute_with_response_body_sets_canonical_response_envelope() -> None:
+    """When execute returns responseBody, bridge sets canonicalResponseEnvelope."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "EXECUTE",
+        "envelope": _eligibility_envelope(),
+    }
+    mock_body = {
+        "transactionId": "tx-1",
+        "correlationId": "corr-1",
+        "status": "completed",
+        "responseBody": {"memberIdWithPrefix": "LH001-12345", "name": "Jane", "status": "eligible"},
+    }
+
+    def mock_executor(req: dict) -> dict:
+        return {"statusCode": 200, "body": mock_body}
+
+    result = run_canonical_bridge(payload, executor=mock_executor)
+    assert result["status"] == "EXECUTED"
+    assert "canonicalResponseEnvelope" in result
+    assert result["canonicalResponseEnvelope"] == mock_body["responseBody"]
+
+
+def test_execute_without_response_body_no_canonical_envelope() -> None:
+    """When execute body has no responseBody, canonicalResponseEnvelope is not set."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "EXECUTE",
+        "envelope": _eligibility_envelope(),
+    }
+
+    def mock_executor(req: dict) -> dict:
+        return {"statusCode": 200, "body": {"transactionId": "tx-1", "status": "completed"}}
+
+    result = run_canonical_bridge(payload, executor=mock_executor)
+    assert result["status"] == "EXECUTED"
+    assert result.get("canonicalResponseEnvelope") is None
+
+
+def test_dry_run_includes_mapped_vendor_request_preview() -> None:
+    """DRY_RUN includes vendorRequestPreview when mapping exists for LH001->LH002."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "DRY_RUN",
+        "envelope": _eligibility_envelope(),
+    }
+    result = run_canonical_bridge(payload)
+    assert result["mode"] == "DRY_RUN"
+    assert result["valid"] is True
+    assert "vendorRequestPreview" in result
+    assert result["vendorRequestPreview"] == {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"}
+    assert "mappingSummary" in result
+    assert result["mappingSummary"].get("available") is True
+
+
+def test_execute_with_response_body_sets_canonical_response_envelope() -> None:
+    """When execute returns responseBody, bridge sets canonicalResponseEnvelope."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "EXECUTE",
+        "envelope": _eligibility_envelope(),
+    }
+    mock_body = {
+        "transactionId": "tx-123",
+        "correlationId": "corr-test",
+        "status": "completed",
+        "responseBody": {"memberIdWithPrefix": "LH001-12345", "name": "Jane", "status": "eligible"},
+    }
+
+    def mock_executor(req: dict) -> dict:
+        return {"statusCode": 200, "body": mock_body}
+
+    result = run_canonical_bridge(payload, executor=mock_executor)
+    assert result["status"] == "EXECUTED"
+    assert "canonicalResponseEnvelope" in result
+    assert result["canonicalResponseEnvelope"] == {"memberIdWithPrefix": "LH001-12345", "name": "Jane", "status": "eligible"}
+
+
+def test_execute_without_response_body_no_canonical_envelope() -> None:
+    """When execute returns body without responseBody, no canonicalResponseEnvelope."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "EXECUTE",
+        "envelope": _eligibility_envelope(),
+    }
+
+    def mock_executor(req: dict) -> dict:
+        return {"statusCode": 200, "body": {"transactionId": "tx-123", "error": "no payload"}}
+
+    result = run_canonical_bridge(payload, executor=mock_executor)
+    assert result["status"] == "EXECUTED"
+    assert result.get("canonicalResponseEnvelope") is None
+
+
+def test_blocked_preflight_prevents_execution_no_runtime_duplication() -> None:
+    """Blocked preflight prevents execution; executor is never called."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "EXECUTE",
+        "envelope": {
+            "operationCode": "GET_VERIFY_MEMBER_ELIGIBILITY",
+            "version": "1.0",
+            "direction": "REQUEST",
+            "correlationId": "corr",
+            "timestamp": "2025-03-06T12:00:00Z",
+            "context": {},
+            "payload": {},  # missing memberIdWithPrefix -> transform fails -> BLOCKED
+        },
+    }
+    executor_called = []
+
+    def mock_executor(req: dict) -> dict:
+        executor_called.append(req)
+        return {"statusCode": 200, "body": "{}"}
+
+    result = run_canonical_bridge(payload, executor=mock_executor)
+    assert result["status"] == "BLOCKED"
+    assert result["valid"] is False
+    assert len(executor_called) == 0
+
+
+def test_dry_run_includes_mapped_vendor_request_preview() -> None:
+    """DRY_RUN includes mappingSummary and vendorRequestPreview when mapping exists."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "DRY_RUN",
+        "envelope": _eligibility_envelope(),
+    }
+    result = run_canonical_bridge(payload)
+    assert result["mode"] == "DRY_RUN"
+    assert result["valid"] is True
+    assert "mappingSummary" in result
+    assert result["mappingSummary"].get("available") is True
+    assert "vendorRequestPreview" in result
+    assert result["vendorRequestPreview"] == {"memberIdWithPrefix": "LH001-12345", "date": "2025-03-06"}
+
+
+def test_execute_with_response_body_sets_canonical_response_envelope() -> None:
+    """EXECUTE with responseBody in execute result sets canonicalResponseEnvelope."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "EXECUTE",
+        "envelope": _eligibility_envelope(),
+    }
+    mock_body = {
+        "transactionId": "tx-123",
+        "correlationId": "corr-test",
+        "status": "completed",
+        "responseBody": {"memberIdWithPrefix": "LH001-12345", "name": "Jane", "status": "eligible"},
+    }
+
+    def mock_executor(req: dict) -> dict:
+        return {"statusCode": 200, "body": mock_body}
+
+    result = run_canonical_bridge(payload, executor=mock_executor)
+    assert result["status"] == "EXECUTED"
+    assert "canonicalResponseEnvelope" in result
+    assert result["canonicalResponseEnvelope"] == mock_body["responseBody"]
+
+
+def test_execute_without_response_body_no_canonical_envelope() -> None:
+    """EXECUTE with body lacking responseBody does not set canonicalResponseEnvelope."""
+    payload = {
+        "sourceVendor": "LH001",
+        "targetVendor": "LH002",
+        "mode": "EXECUTE",
+        "envelope": _eligibility_envelope(),
+    }
+
+    def mock_executor(req: dict) -> dict:
+        return {"statusCode": 200, "body": {"transactionId": "tx-123", "status": "completed"}}
+
+    result = run_canonical_bridge(payload, executor=mock_executor)
+    assert result["status"] == "EXECUTED"
+    assert result.get("canonicalResponseEnvelope") is None
